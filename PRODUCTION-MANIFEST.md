@@ -101,6 +101,11 @@ Run from the production checkout root. Every command must come back clean.
 7. Bare-loopback smoke test: with a local `roms\timecrs2.zip` in place, run
    `.\launch_link_loopback.ps1` — both windows launch, pair up during the
    countdown, and LINK PLAY is selectable on both.
+8. Commit identity: every commit on this branch is authored and committed
+   as `pocketjazzy <pocketjazzy@users.noreply.github.com>` (no personal
+   email). Check: `git log --format='%an <%ae>%n%cn <%ce>' | sort -u`
+   shows only that identity. When committing, use
+   `git -c user.name=pocketjazzy -c user.email=pocketjazzy@users.noreply.github.com commit ...`
 
 ---
 
