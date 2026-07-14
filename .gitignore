@@ -1,0 +1,63 @@
+*~
+.*.sw?
+*.mo
+*.orig
+*.pyc
+*.pyo
+*.rej
+*.L68
+*.S68
+.DS_Store
+
+/*
+/*/
+!/.github/
+!/3rdparty/
+!/android-project/
+!/benchmarks/
+!/artwork/
+!/bgfx/
+!/docs/
+!/hash/
+!/hlsl/
+!/keymaps/
+!/language/
+!/nl_examples/
+!/plugins/
+!/projects/
+!/regtests/
+!/samples/
+!/scripts/
+!/src/
+!/shaders/
+!/tests/
+!/doxygen/
+!/web/
+!/.gitattributes
+!/.gitignore
+!/.travis.yml
+!/makefile
+!/mame.doxygen
+!/*.md
+!/*.bdf
+!/LICENSE
+/.idea
+.vscode
+docs/build
+docs/source/_build
+regtests/chdman/temp
+regtests/jedutil/output
+/CMakeLists.txt
+/samples
+
+# --- TC2 link-play production additions ---
+# MAME's whitelist above ignores any root entry not explicitly re-included.
+!/*.ps1
+# ROMs are copyrighted game data - NEVER tracked or shipped. You must supply
+# your own legally-owned timecrs2 ROM set (see README.md).
+/roms/
+# Per-machine launcher settings and MAME runtime state stay local.
+lan_settings.json
+/cfg/
+/nvram/
+*.log
