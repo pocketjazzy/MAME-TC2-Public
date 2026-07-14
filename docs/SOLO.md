@@ -25,18 +25,23 @@ The game boots and plays exactly like a single arcade cabinet.
 
 ## 3. About the link switch
 
-The game has a DIP switch called **Link Play Enabled** (press Tab in
-the game window, then open **DIP Switches** to see it).
+The game has a DIP switch called **Link Play Enabled**. To see it,
+press **Tab** on the keyboard while the game is running to open MAME's
+menu, then pick **DIP Switches**.
 
-- **Off** (the default): the game goes straight to normal solo play.
-- **On**: at startup the game spends about 30 seconds searching for a
-  partner cabinet (you'll see a countdown). If none is found, it gives
-  up and falls back to solo play on its own. Nothing breaks — it just
-  wastes half a minute.
+Either way, after its power-on self test the game briefly shows a
+countdown (starting at 300 — it lasts a few seconds). That countdown is
+part of the game's normal startup and appears whether the switch is on
+or off. What the switch controls is whether the game will actually
+pair with a partner cabinet during it:
 
-So for pure solo play, leave the switch off. If you've been playing
-link play and the switch is still on, you can either wait out the
-countdown or switch it off and restart.
+- **Off** (the default): the game ignores partners and continues into
+  normal solo play.
+- **On**: the game looks for a partner during the countdown. If it
+  finds none, it falls back to solo play on its own — nothing breaks.
+
+For pure solo play the switch can stay off; leaving it on costs you
+nothing but those few startup seconds of searching.
 
 ## 4. Want a second player?
 

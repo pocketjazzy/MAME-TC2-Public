@@ -72,9 +72,12 @@ $DefaultListenerIP  = '192.168.1.10'   # RED PC (waits) - placeholder, change vi
 $DefaultConnectorIP = '192.168.1.11'   # BLUE PC (dials) - placeholder, change via C
 $GamePort    = 9876             # the game link itself
 $ControlPort = 9875             # this script's coordination channel
-$WiFiListenerWaitSeconds  = 60  # WiFi mode: RED cab partner-search window (countdown shows 600)
-$WiFiConnectorWaitSeconds = 45  # WiFi mode: BLUE cab window (shows 450; BLUE launches later,
-                                # so its shorter window ends around the same time as RED's)
+$WiFiListenerWaitSetting  = 60  # WiFi mode: RED cab partner-search window setting (the
+                                # on-screen counter starts at 10x this = 600, roughly
+                                # double the standard few-second window)
+$WiFiConnectorWaitSetting = 45  # WiFi mode: BLUE cab setting (counter starts at 450;
+                                # BLUE launches later, so its shorter window ends around
+                                # the same time as RED's)
 
 function Test-IPv4 { param([string]$s) $ip=$null; return ([System.Net.IPAddress]::TryParse($s, [ref]$ip) -and $ip.AddressFamily -eq 'InterNetwork') }
 
@@ -171,19 +174,21 @@ if ($Role -ne '1' -and $Role -ne '2') { throw "Invalid role '$Role' (expected 1 
 # Persist the values actually used this run (captures command-line overrides too).
 Save-LanSettings -LIP $ListenerIP -CIP $ConnectorIP -NetMode $Mode -Path $settingsFile
 
-# Mode -> partner-search window. WiFi mode widens the game's built-in ~30 s
-# partner-search countdown for extra pairing margin on a less predictable
-# connection (RED 60 s / BLUE 45 s - BLUE launches later, so both windows end
+# Mode -> partner-search window. WiFi mode roughly DOUBLES the game's built-in
+# few-second partner-search countdown for extra pairing margin on a less
+# predictable connection (the on-screen counter starts at 600 on RED / 450 on
+# BLUE instead of the standard 300 - BLUE launches later, so both windows end
 # around the same time). The widening is passed to the game via the
-# NAMCOS23_PATCH_LINK_WAIT environment variable (seconds); Ethernet mode passes
-# nothing and uses the game's default. Run the SAME mode on BOTH PCs -
-# mismatched windows let the shorter-window cabinet fall back to solo early.
-$LinkWaitSeconds = ''
+# NAMCOS23_PATCH_LINK_WAIT environment variable (counter = 10x the value);
+# Ethernet mode passes nothing and uses the game's default. Run the SAME mode
+# on BOTH PCs - mismatched windows let the shorter-window cabinet fall back to
+# solo early.
+$LinkWaitSetting = ''
 if ($Mode -eq 'WiFi') {
-    $LinkWaitSeconds = if ($Role -eq '1') { [string]$WiFiListenerWaitSeconds } else { [string]$WiFiConnectorWaitSeconds }
-    Write-Host ("Network mode WiFi: in-game partner countdown ~{0}s on this PC (RED {1}s / BLUE {2}s; use WiFi mode on the other PC too)" -f $LinkWaitSeconds, $WiFiListenerWaitSeconds, $WiFiConnectorWaitSeconds) -ForegroundColor DarkGray
+    $LinkWaitSetting = if ($Role -eq '1') { [string]$WiFiListenerWaitSetting } else { [string]$WiFiConnectorWaitSetting }
+    Write-Host ("Network mode WiFi: widened partner-search window (counter starts at {0}0 on this PC; use WiFi mode on the other PC too)" -f $LinkWaitSetting) -ForegroundColor DarkGray
 } else {
-    Write-Host 'Network mode Ethernet: standard in-game partner countdown (~30s)' -ForegroundColor DarkGray
+    Write-Host 'Network mode Ethernet: standard partner-search window (counter starts at 300)' -ForegroundColor DarkGray
 }
 
 # Mode-aware stagger default (explicit -StaggerMs always wins): the LISTENER_UP
@@ -210,7 +215,7 @@ Write-Host ("Settings folder ({0} cabinet identity) : {1}" -f $(if ($Role -eq '1
 # WiFi mode passes the widened partner-search window to the game; Ethernet
 # passes nothing (game default).
 $mameEnv = @{}
-if (-not [string]::IsNullOrWhiteSpace($LinkWaitSeconds)) { $mameEnv['NAMCOS23_PATCH_LINK_WAIT'] = [string]$LinkWaitSeconds }
+if (-not [string]::IsNullOrWhiteSpace($LinkWaitSetting)) { $mameEnv['NAMCOS23_PATCH_LINK_WAIT'] = [string]$LinkWaitSetting }
 
 # Pre-flight: the ROM zip is expected beside the binary.
 $romZip = Join-Path $rompath 'timecrs2.zip'
@@ -335,6 +340,6 @@ else {
 }
 
 Write-Host ''
-$windowLabel = if ($Mode -eq 'WiFi') { ('~{0} s (WiFi mode, this cabinet)' -f $LinkWaitSeconds) } else { '~30 s (standard)' }
-Write-Host ("Launched. The game link now establishes over TCP {0} within the {1} partner-search window." -f $GamePort, $windowLabel) -ForegroundColor Green
+$windowLabel = if ($Mode -eq 'WiFi') { ('counter from {0}0, WiFi-widened' -f $LinkWaitSetting) } else { 'counter from 300, standard' }
+Write-Host ("Launched. The game link now establishes over TCP {0} during the partner-search window ({1})." -f $GamePort, $windowLabel) -ForegroundColor Green
 Write-Host 'Close the game window when done.' -ForegroundColor Green

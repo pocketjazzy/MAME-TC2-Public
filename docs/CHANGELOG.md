@@ -15,10 +15,14 @@ endorsed by Namco or Bandai Namco.
 - **Play on one PC or two.** Run two game windows on the same PC, or
   link two PCs over your home network — Ethernet or WiFi both work.
 - **In-game Link Play Config menu.** Network settings (who listens,
-  who connects, on which address and port) are edited right in the
-  game's Tab menu and saved automatically — no config files to edit.
+  who connects, on which address and port) are edited right inside
+  MAME: press **Tab** on the keyboard while the game is running to open
+  MAME's menu, then pick **Link Play Config**. Settings save
+  automatically — no config files to edit.
 - **The link switch has a proper name.** The DIP switch that turns
   link play on is now labeled "Link Play Enabled" instead of "Unknown".
+  You'll find it in the same MAME Tab menu, under **DIP Switches**,
+  while the game is running.
 - **Smoother motion over the link.** A series of netcode improvements
   keeps the partner's movement and the shared action smooth and in
   step throughout the game.

@@ -101,15 +101,16 @@ gets this right for you: it verifies the red game actually started and
 survived its first three seconds (a health check) before it releases
 the blue side, plus a small extra delay for margin. If you launch
 manually, just remember: **red first, wait a few seconds, then blue.**
-Both games then show a partner-search countdown (about 30 seconds —
-displayed as 300) during which they find each other.
+Both games then show a partner-search countdown (a counter starting at
+300 — it runs for a few seconds) during which they find each other.
 
 ## WiFi
 
 WiFi works. In the script's menu, press **M** to select **WiFi** mode
 on **both** PCs. WiFi mode widens the in-game partner-search countdown
-(about 60 seconds on the red side, 45 on the blue side) to give the
-pairing extra margin on a less predictable connection.
+(the counter starts at 600 on the red side and 450 on the blue side —
+roughly double the standard window) to give the pairing extra margin on
+a less predictable connection.
 
 For the smoothest play, wired Ethernet is still the best choice —
 but a decent modern WiFi network holds up fine.
