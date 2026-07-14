@@ -58,9 +58,8 @@ The short version for link play:
       - Go to "Machine Configuration" and assign each instance a cabinet identity (one left/red, one
    right/blue)
       - Go to "Dip Switches" and switch **Link Play Enabled** to ON.
-4. Close both instances and re-run the matching launcher script — `launch_link_loopback.ps1` for one
-   PC, `launch_link_LAN.ps1` for two PCs.
-5. The GASHIN logo should appear in sync which means you have a healthy link. SOLO/LINK PLAY should appear available on the mode-select screen.
+4. Close both instances and re-run the matching launcher script.
+5. The GASHIN logo should appear in sync which indicates a healthy link. SOLO/LINK PLAY should appear available on the mode-select screen.
 
 ---
 
