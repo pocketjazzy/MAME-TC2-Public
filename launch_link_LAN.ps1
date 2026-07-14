@@ -46,8 +46,10 @@ param(
     [string]$ListenerIP = '',           # RED PC IP; empty = last-saved (lan_settings.json) or built-in default
     [string]$ConnectorIP = '',          # BLUE PC IP; empty = last-saved or built-in default
     [ValidateSet('Ethernet','WiFi','')]
-    [string]$Mode = ''                  # network mode; WiFi widens the in-game partner-search
+    [string]$Mode = '',                 # network mode; WiFi widens the in-game partner-search
                                         # countdown for extra pairing margin; empty = last-saved or Ethernet
+    [switch]$Log                        # write a diagnostic error.log into this PC's instance
+                                        # folder (off by default)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -233,7 +235,9 @@ function Test-MameAlive {
     return $true
 }
 
-$commonFlags = '-window -nomaximize -resolution 640x480 -prescale 1 -nokeepaspect -skip_gameinfo -log'
+# Logging is OFF by default; -Log adds MAME's -log (error.log in this PC's instance folder).
+$commonFlags = '-window -nomaximize -resolution 640x480 -prescale 1 -nokeepaspect -skip_gameinfo'
+if ($Log) { $commonFlags += ' -log' }
 
 if ($Role -eq '1') {
     # ===================== RED cabinet (listener, waits) ======================
@@ -267,7 +271,7 @@ if ($Role -eq '1') {
     }
     Start-Sleep -Milliseconds 200
     $client.Close()
-    Write-Host ("Log: {0}\error.log" -f $WorkDir) -ForegroundColor DarkGray
+    if ($Log) { Write-Host ("Log: {0}\error.log" -f $WorkDir) -ForegroundColor DarkGray }
 }
 else {
     # ===================== BLUE cabinet (connector, dials) ====================
@@ -327,7 +331,7 @@ else {
         Write-Host ("BLUE cabinet up (PID {0})." -f $proc.Id) -ForegroundColor Green
     }
     $client.Close()
-    Write-Host ("Log: {0}\error.log" -f $WorkDir) -ForegroundColor DarkGray
+    if ($Log) { Write-Host ("Log: {0}\error.log" -f $WorkDir) -ForegroundColor DarkGray }
 }
 
 Write-Host ''

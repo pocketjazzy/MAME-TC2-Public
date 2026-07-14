@@ -29,7 +29,8 @@
 param(
     [double]$DelaySeconds = -1,      # RED-before-BLUE launch stagger; -1 = ask
     [switch]$KillExisting,           # close any running MAME processes first
-    [switch]$KeepLogs,               # do not clear the previous error.log files
+    [switch]$Log,                    # write diagnostic error.log files (off by default;
+                                     # each run with -Log starts a fresh log per instance)
     [switch]$SoloListener,           # launch only the RED (listening) instance
     [switch]$SoloConnector,          # launch only the BLUE (connecting) instance
     [int]$ListenerPort = 9876,       # TCP port the RED instance listens on
@@ -149,7 +150,9 @@ if ($KillExisting) {
     }
 }
 
-if (-not $KeepLogs) {
+# Logging is OFF by default. With -Log, MAME writes diagnostic error.log files
+# into each instance folder, and each run starts them fresh.
+if ($Log) {
     $dirsToTruncate = if ($SoloListener)      { @($MameDir) }
                       elseif ($SoloConnector) { @($MameInstanceB) }
                       else                    { @($MameDir, $MameInstanceB) }
@@ -160,10 +163,10 @@ if (-not $KeepLogs) {
     }
 }
 
-# -log writes diagnostic output to error.log in each working folder.
 # Window flags put both instances in the same compact 640x480 window.
 $rompath       = Join-Path $MameDir 'roms'
-$commonFlags   = '-window -nomaximize -resolution 640x480 -prescale 1 -nokeepaspect -skip_gameinfo -log'
+$commonFlags   = '-window -nomaximize -resolution 640x480 -prescale 1 -nokeepaspect -skip_gameinfo'
+if ($Log) { $commonFlags += ' -log' }
 $listenerArgs  = "timecrs2 $commonFlags -comm_localport $ListenerPort -comm_remotehost `"`""
 $connectorArgs = "timecrs2 $commonFlags -comm_remotehost 127.0.0.1 -comm_remoteport $ListenerPort -comm_localhost `"`" -rompath `"$rompath`""
 
@@ -200,12 +203,12 @@ if (-not $NoPosition) {
 Write-Host ''
 if ($SoloListener) {
     Write-Host 'RED cabinet launched (solo). Close the game window when done.' -ForegroundColor Green
-    Write-Host "Log: $MameDir\error.log" -ForegroundColor DarkGray
+    if ($Log) { Write-Host "Log: $MameDir\error.log" -ForegroundColor DarkGray }
 } elseif ($SoloConnector) {
     Write-Host 'BLUE cabinet launched (solo). Close the game window when done.' -ForegroundColor Green
-    Write-Host "Log: $MameInstanceB\error.log" -ForegroundColor DarkGray
+    if ($Log) { Write-Host "Log: $MameInstanceB\error.log" -ForegroundColor DarkGray }
 } else {
     Write-Host 'Both cabinets launched - they pair up during the on-screen countdown.' -ForegroundColor Green
     Write-Host 'Close the game windows when done.' -ForegroundColor Green
-    Write-Host "Logs: $MameDir\error.log  +  $MameInstanceB\error.log" -ForegroundColor DarkGray
+    if ($Log) { Write-Host "Logs: $MameDir\error.log  +  $MameInstanceB\error.log" -ForegroundColor DarkGray }
 }
