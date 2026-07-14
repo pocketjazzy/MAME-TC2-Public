@@ -46,6 +46,7 @@ from the private development tree. **Read it before every sync or release.**
 | `lan_settings.json` | Per-PC user settings written by the LAN script. |
 | The dev-branch launcher scripts | The repo-root launchers on development branches carry developer-only experiment plumbing (`-PatchEnv` etc.). Production ships the clean variants listed above instead. |
 | `cfg/`, `nvram/`, `instance-b/` and similar | Per-user emulator state. |
+| `.github/**` (upstream CI workflows + issue templates) | Not needed to build; on a public repo the workflows would auto-trigger GitHub Actions runs of upstream MAME CI, and the issue templates point at upstream. Also lets pushes work without the `workflow` OAuth scope. |
 
 ---
 
