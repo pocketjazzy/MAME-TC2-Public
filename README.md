@@ -55,9 +55,9 @@ The short version for link play:
 2. Run the matching launcher script — `launch_link_loopback.ps1` for one
    PC, `launch_link_LAN.ps1` for two PCs.
 3. In each MAME instance, press (TAB) to access the game menu.
-      a. Go to "Machine Configuration" and assign each instance a cabinet identity (one left/red, one
+      - Go to "Machine Configuration" and assign each instance a cabinet identity (one left/red, one
    right/blue)
-      b. Go to "Dip Switches" and switch **Link Play Enabled** to ON.
+      - Go to "Dip Switches" and switch **Link Play Enabled** to ON.
 4. Close both instances and re-run the matching launcher script — `launch_link_loopback.ps1` for one
    PC, `launch_link_LAN.ps1` for two PCs.
 5. The GASHIN logo should appear in sync which means you have a healthy link. SOLO/LINK PLAY should appear available on the mode-select screen.
