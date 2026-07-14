@@ -2,14 +2,10 @@
 
 Two cabinets. Two players. One mission.
 
-In 1997, arcades could wire two Time Crisis II cabinets together so two
-players fought through the game side by side, each on their own screen.
-MAME — the arcade emulator — has never emulated that link. Officially, it
-still doesn't.
+On release, two Time Crisis II cabinets could link together for Co-op gameplay. MAME — the arcade emulator — has never emulated that link for Time Crisis II. Officially, it still doesn't.
 
 This project makes it work. It is a modified build of **MAME 0.287** that
-emulates the cabinet-to-cabinet link for Time Crisis II — for the first
-time anywhere. You can link two copies of the game on one PC, or two PCs
+emulates the cabinet-to-cabinet link for Time Crisis II. You can link two copies of the game on one PC, or two PCs
 over your home network, and play the full co-op campaign.
 
 ---
@@ -56,12 +52,15 @@ Pick the guide that matches how you want to play:
 The short version for link play:
 
 1. Put `mametc2.exe` and your `roms\timecrs2.zip` in place.
-2. In the game's menus, give each copy a cabinet identity (one red, one
-   blue) and switch **Link Play Enabled** on.
-3. Run the matching launcher script — `launch_link_loopback.ps1` for one
+2. Run the matching launcher script — `launch_link_loopback.ps1` for one
    PC, `launch_link_LAN.ps1` for two PCs.
-4. Both games find each other, and LINK PLAY appears on the mode-select
-   screen.
+3. In each MAME instance, press (TAB) to access the game menu.
+      > Go to "Machine Configuration" and assign each instance a cabinet identity (one left/red, one
+   right/blue)
+      > Go to "Dip Switches" and switch **Link Play Enabled** to ON.
+4. Close both instances and re-run the matching launcher script — `launch_link_loopback.ps1` for one
+   PC, `launch_link_LAN.ps1` for two PCs.
+5. The GASHIN logo should appear in sync which means you have a healthy link. SOLO/LINK PLAY should appear available on the mode-select screen.
 
 ---
 
