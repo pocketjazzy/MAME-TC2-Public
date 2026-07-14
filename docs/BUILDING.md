@@ -33,7 +33,7 @@ Still in the UCRT64 shell, clone this repository (or download and unzip
 the source archive from the releases page):
 
 ```
-git clone <repository-url> tc2-linkplay
+git clone https://github.com/pocketjazzy/MAME-TC2-Public.git tc2-linkplay
 cd tc2-linkplay
 ```
 
