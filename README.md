@@ -16,24 +16,21 @@ This fork does **not** account for any other emulated games that use these modif
    > You must own your own legal copy of Time Crisis II — for example, dumped from your own arcade board.
    > I do not condone, promote, or facilitate piracy.
 
-3. **A reasonably modern CPU**
+2. **A reasonably modern CPU**
    - The MAME emulator is CPU-based, so having a fast CPU on both linked machines is important. They do not need to be the same model, but **the whole session will run at the pace of the slower machine.**
    - This was developed and tested on an AMD Ryzen 9 7950X3D and an Intel i7-12850HX.
 
-4. **Windows 10/11 x64 and PowerShell**
+3. **Windows 10/11 x64 and PowerShell**
+
+4. This custom MAME build (mametc2.exe)
+   - **Download the latest pre-built release** — [`TC2-LinkPlay-vX.X-win64.zip`](https://github.com/pocketjazzy/MAME-TC2-Public/releases/)
+   - **Build it from source** — clone this repository and compile it yourself. See **[docs/BUILDING.md](docs/BUILDING.md)** for the step-by-step Windows guide.
 
 ---
 
-## Two ways to get this custom MAME build (mametc2.exe)
+## Quick start guide
 
-- **Download the latest pre-built release** — [`TC2-LinkPlay-vX.X-win64.zip`](https://github.com/pocketjazzy/MAME-TC2-Public/releases/), unzip it, and add your own ROM to the `\roms\` folder.
-- **Build it from source** — clone this repository and compile it yourself. See **[docs/BUILDING.md](docs/BUILDING.md)** for the step-by-step Windows guide.
-
----
-
-# Quick start guide
-
-## Single-PC link play:
+### Single-PC link play:
 
 1. Unzip the ready-built release containing `mametc2.exe` into a new folder.
 2. Add your `timecrs2.zip` to the `roms` folder (do not unzip it).
@@ -51,7 +48,7 @@ This fork does **not** account for any other emulated games that use these modif
    **NOTE:** If you wish to change the window sizes and locations to a new default, you can copy the launcher script and make any changes you need.
 
 
-## Two-PC link play:
+### Two-PC link play:
 
 1. Follow steps 1-6 in the **single-PC link play** instructions above for initial setup.
 2. Run the two-PC launcher script `launch_link_LAN.ps1` on both PCs.
