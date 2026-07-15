@@ -74,6 +74,7 @@ No ROMs are included with this project, and none are provided.
 
 ## 5. Next steps
 
-- Play alone: [SOLO.md](SOLO.md)
-- Link play on one PC: [LINKPLAY-LOOPBACK.md](LINKPLAY-LOOPBACK.md)
-- Link play on two PCs: [LINKPLAY-LAN.md](LINKPLAY-LAN.md)
+- Quick-start guides for single-PC and two-PC link play: the
+  [README](../README.md)
+- Manual setup, WiFi mode, solo play, and other extras:
+  [ADVANCED.md](ADVANCED.md)

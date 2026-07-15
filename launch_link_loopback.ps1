@@ -2,7 +2,8 @@
 #
 # Starts two copies of the game side by side (RED cabinet + BLUE cabinet) and
 # links them on this machine. Run it from the folder that contains
-# mametc2.exe and roms\timecrs2.zip. Full guide: docs\LINKPLAY-LOOPBACK.md
+# mametc2.exe and roms\timecrs2.zip. Full guide: README.md (Quick start
+# guide); extras and manual setup in docs\ADVANCED.md
 #
 # Usage:
 #   .\launch_link_loopback.ps1                     # prompts for the launch delay

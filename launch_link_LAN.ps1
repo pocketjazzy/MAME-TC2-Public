@@ -9,7 +9,8 @@
 #             -ListenerIP / -ConnectorIP parameters override + save too)
 #   Press M = toggle Ethernet/WiFi mode (saved; use the SAME mode on both PCs)
 #
-# Full guide (including the firewall rule the RED PC needs): docs\LINKPLAY-LAN.md
+# Full guide (including the firewall rule the RED PC needs): README.md
+# (Quick start guide + Troubleshooting); extras in docs\ADVANCED.md
 #
 # How the two PCs coordinate (no clock sync needed - the game link keeps the
 # two machines in step by itself; the in-game partner-search countdown is the
@@ -25,7 +26,7 @@
 #      the RED PC's IP.
 #   The control socket is then closed; the game link takes over on port 9876.
 #
-# BEFORE FIRST USE (once per PC - see docs\LINKPLAY-LAN.md):
+# BEFORE FIRST USE (once per PC - see README.md):
 #   - mametc2.exe + roms\timecrs2.zip in this script's folder on BOTH PCs.
 #   - One-time in-game setup on each PC: Link ID (Left/Red on the red PC,
 #     Right/Blue on the blue PC) + DIP switch "Link Play Enabled" On.
@@ -252,7 +253,7 @@ if ($Role -eq '1') {
     $srv.Start()
     Write-Host ''
     Write-Host ("RED ready. Waiting for the BLUE PC ({0}) on control port {1}..." -f $ConnectorIP, $ControlPort) -ForegroundColor Magenta
-    Write-Host '(Ctrl+C to abort. Not connecting? Check the firewall rule - see docs\LINKPLAY-LAN.md.)' -ForegroundColor DarkGray
+    Write-Host '(Ctrl+C to abort. Not connecting? Check the firewall rule - see README.md Troubleshooting.)' -ForegroundColor DarkGray
 
     $client = $srv.AcceptTcpClient()          # blocks until the BLUE PC dials in
     $srv.Stop()
@@ -293,7 +294,7 @@ else {
             $c.Connect($ListenerIP, $ControlPort)
             $client = $c
         } catch {
-            if (($attempt % 10) -eq 0) { Write-Host ("  ...still waiting (attempt {0}). Is the RED PC running this script with option 1? Firewall open? (docs\LINKPLAY-LAN.md)" -f $attempt) -ForegroundColor DarkGray }
+            if (($attempt % 10) -eq 0) { Write-Host ("  ...still waiting (attempt {0}). Is the RED PC running this script with option 1? Firewall open? (see README.md Troubleshooting)" -f $attempt) -ForegroundColor DarkGray }
             Start-Sleep -Milliseconds 500
         }
     }

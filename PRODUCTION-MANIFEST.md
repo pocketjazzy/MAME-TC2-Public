@@ -26,8 +26,10 @@ from the private development tree. **Read it before every sync or release.**
 **Plus the production overlay** (these files, maintained in this layout):
 
 - `README.md` — the public front page (replaces MAME's upstream README)
-- `docs/BUILDING.md`, `docs/SOLO.md`, `docs/LINKPLAY-LOOPBACK.md`,
-  `docs/LINKPLAY-LAN.md`, `docs/CHANGELOG.md` — the user guides
+- `docs/BUILDING.md`, `docs/ADVANCED.md`, `docs/CHANGELOG.md` — the user
+  guides (quick-start lives in README.md; SOLO.md / LINKPLAY-LOOPBACK.md /
+  LINKPLAY-LAN.md were retired 2026-07-15, their unique content merged into
+  README.md + docs/ADVANCED.md)
 - `launch_link_loopback.ps1`, `launch_link_LAN.ps1` — the **production**
   launcher scripts (end-user variants, no experiment plumbing)
 - `PRODUCTION-MANIFEST.md` — this file
@@ -122,9 +124,7 @@ TC2-LinkPlay-v<version>\
   README.md
   docs\
     BUILDING.md
-    SOLO.md
-    LINKPLAY-LOOPBACK.md
-    LINKPLAY-LAN.md
+    ADVANCED.md
     CHANGELOG.md
   roms\
     PUT-ROM-HERE.txt            (see below)

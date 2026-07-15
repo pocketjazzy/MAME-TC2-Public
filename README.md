@@ -54,9 +54,10 @@ This fork does **not** account for any other emulated games that use these modif
 2. Run the two-PC launcher script `launch_link_LAN.ps1` on both PCs.
 3. Press `C` to set each PC's LAN IP address in the interactive PowerShell script.
    - If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
+   - If either PC is on WiFi, press `M` to switch the mode to `WiFi` on **both** PCs (the choice is saved for next time). WiFi mode widens the in-game partner-search countdown to give the pairing extra margin — see [docs/ADVANCED.md](docs/ADVANCED.md).
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
    - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
-   - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP. 
+   - If you want to play over the internet, create a port-forwarding rule on the RED player's router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP.
 5. RED player chooses `1`, and BLUE player chooses `2`. Hit `Enter` to accept, and then wait for the other player to connect.
    - BLUE player may need to temporarily set their `left/red` instance to `right/blue` in the machine configuration menu. See the Troubleshooting section below for more information. 
 7. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
@@ -66,14 +67,14 @@ This fork does **not** account for any other emulated games that use these modif
 
 # Troubleshooting
 
-1.   If you're attempting a LAN/WAN session and you're not getting the countdown, check the following:
+1. If you're attempting a LAN/WAN session and you're not getting the countdown, check the following:
    - Both instances have the Link Play DIP switch set to `ON`
-   - Both instances have a *different* sides/colors configured in Machine Configuration
-   - RED has configured an inbound windows firewall rule that allows any TCP port 9875-9876 traffic
-   - (If WAN) RED has configured a port forwarding rule that forwards any TCP port 9875-9876 traffic to the RED PCs LAN IP address 
-   - The LAN script currently only uses the main folder mametc2.exe and cfg file, this means if you followed the Single-PC instructions exactly, then you will end up with two players attempting to connect to eachother using left/red settings. For this reason, the player who as decided to be BLUE will need to go back into Machine Configuration and temporarily change their `left/red` instance to `right/blue`. If both players attempt to start a link mode session using the same side/color then the session will drop both cabinets back to solo mode, or fail to start the Stage 1 cutscene. I am working on a fix for this to make the script more dynamic and out of the box ready. 
+   - Both instances have *different* sides/colors configured in Machine Configuration
+   - RED has configured an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic
+   - (If WAN) RED has configured a port-forwarding rule that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP address
+   - The LAN script currently only uses the main folder's mametc2.exe and cfg file. This means that if you followed the Single-PC instructions exactly, you will end up with two players attempting to connect to each other using left/red settings. For this reason, the player who has decided to be BLUE will need to go back into Machine Configuration and temporarily change their `left/red` instance to `right/blue`. If both players attempt to start a link-mode session using the same side/color, the session will drop both cabinets back to solo mode, or fail to start the Stage 1 cutscene. I am working on a fix for this to make the script more dynamic and out-of-the-box ready.
 
-
+For more background — how cabinet identity works (one program, two folders), why the staggered start matters, WiFi mode, and manual setup without the scripts — see **[docs/ADVANCED.md](docs/ADVANCED.md)**.
 
 ---
 
@@ -87,7 +88,13 @@ launcher scripts help streamline the launch timing.
 
 ---
 
-## Appendix: advanced tuning
+## Appendix: advanced notes & tuning
+
+**[docs/ADVANCED.md](docs/ADVANCED.md)** collects everything that goes
+beyond the quick-start guides above: how cabinet identity works (one
+program, two folders), what the launcher scripts do behind the scenes,
+manual setup without the scripts, WiFi mode, solo play, and playing over
+the internet.
 
 The link code ships with sensible defaults that just work — you should
 not need to change anything. For experts, a small number of tuning
@@ -107,5 +114,16 @@ trademark of its respective owner.
 
 The emulator source code is available under MAME's license (see the
 `COPYING` file in the source repository). No game data is included.
+
+**Disclaimer of warranty and liability:** This software is provided
+"as is", without warranty of any kind, express or implied. You download,
+install, configure, and use it entirely **at your own risk**. In no event
+shall the author or contributors be liable for any claim, damages, or
+other liability arising from the use of — or inability to use — this
+software. This includes, without limitation, any consequences of
+network-configuration changes made to enable link play (such as Windows
+Firewall exceptions or router port forwarding): those changes are made at
+your own discretion and risk, and you are solely responsible for the
+security of your own network.
 
 
