@@ -58,7 +58,7 @@ This fork does **not** account for any other emulated games that use these modif
 3. Press `C` to set each PC's LAN IP address in the interactive PowerShell script.
    - If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
-   - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception (and a port-forwarding rule if playing online).
+   - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
    - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP. 
 5. RED player chooses `1`, and BLUE player chooses `2`. Hit `Enter` to accept, and then wait for the other player to connect.
 6. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
