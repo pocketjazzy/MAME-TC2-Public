@@ -46,7 +46,7 @@ This fork does **not** account for any other emulated games that use these modif
    - Go to "Dip Switches" on both and switch **Link Play Enabled** to ON.
    - Close both instances.
 7. Re-run the launcher script. The individual MAME instance settings you just configured are saved in their respective folders' cfg files.
-8. The red NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+8. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
    **NOTE:** If you wish to change the window sizes and locations to a new default, you can copy the launcher script and make any changes you need.
 
@@ -57,15 +57,12 @@ This fork does **not** account for any other emulated games that use these modif
 2. Run the two-PC launcher script `launch_link_LAN.ps1` on both PCs.
 3. Press `C` to set each PC's LAN IP address in the interactive PowerShell script.
    - If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
-4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current LAN profile (e.g., Domain/Private/Public).
-   - This is a server/client setup and the scripts are set up so that RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception (and a port-forwarding rule if playing online).
-   - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP.
-5. Choose either `1` or `2` in the script to match your color/side, and wait.
-6. In each MAME instance, press TAB to access the MAME/game menu.
-   - Go to "Machine Configuration" and assign each instance a different cabinet identity (left/red, right/blue).
-   - Go to "Dip Switches" and switch **Link Play Enabled** to ON.
-7. Close both instances and re-run the `launch_link_LAN.ps1` launcher script on both PCs.
-8. The red NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
+   - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception (and a port-forwarding rule if playing online).
+   - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP. 
+5. RED player chooses `1`, and BLUE player chooses `2`. Hit `Enter` to accept, and then wait for the other player to connect.
+6. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
+7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
 ---
 
