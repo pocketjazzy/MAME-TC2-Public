@@ -39,7 +39,7 @@ This fork does **not** account for any other emulated games that use these modif
 4. Run the single-PC launcher script `launch_link_loopback.ps1`.
 5. When prompted with `Delay between RED and BLUE launch in seconds (Enter = 0.85):`, press Enter to accept the default setting.
 6. In each MAME instance, press TAB to access the MAME/game menu.
-   - Go to "Machine Configuration" on both and assign each instance a different cabinet identity (left/red, right/blue).
+   - Go to "Machine Configuration" on both and assign each instance a different cabinet identity. The left window should be `left/red`. The right window should be `right/blue`.
    - Go to "Dip Switches" on both and switch **Link Play Enabled** to ON.
    - Close both instances.
 7. Re-run the launcher script. The individual MAME instance settings you just configured are saved in their respective folders' cfg files.
@@ -58,14 +58,21 @@ This fork does **not** account for any other emulated games that use these modif
    - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
    - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP. 
 5. RED player chooses `1`, and BLUE player chooses `2`. Hit `Enter` to accept, and then wait for the other player to connect.
-6. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
-7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+   - BLUE player may need to temporarily set their `left/red` instance to `right/blue` in the machine configuration menu. See the Troubleshooting section below for more information. 
+7. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
+8. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
 ---
 
 # Troubleshooting
 
-Come back soon...
+1.   If you're attempting a LAN/WAN session and you're not getting the countdown, check the following:
+   - Both instances have the Link Play DIP switch set to `ON`
+   - Both instances have a *different* sides/colors configured in Machine Configuration
+   - RED has configured an inbound windows firewall rule that allows any TCP port 9875-9876 traffic
+   - (If WAN) RED has configured a port forwarding rule that forwards any TCP port 9875-9876 traffic to the RED PCs LAN IP address 
+   - The LAN script currently only uses the main folder mametc2.exe and cfg file, this means if you followed the Single-PC instructions exactly, then you will end up with two players attempting to connect to eachother using left/red settings. For this reason, the player who as decided to be BLUE will need to go back into Machine Configuration and temporarily change their `left/red` instance to `right/blue`. If both players attempt to start a link mode session using the same side/color then the session will drop both cabinets back to solo mode, or fail to start the Stage 1 cutscene. I am working on a fix for this to make the script more dynamic and out of the box ready. 
+
 
 
 ---
@@ -100,3 +107,5 @@ trademark of its respective owner.
 
 The emulator source code is available under MAME's license (see the
 `COPYING` file in the source repository). No game data is included.
+
+
