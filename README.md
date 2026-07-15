@@ -1,23 +1,26 @@
 # Time Crisis II — Link Play for MAME
 
-On release, two Time Crisis II cabinets could be linked together for co-op gameplay; however, the MAME project has not yet emulated that inter-cabinet link. This custom fork of **MAME 0.287** aims to add that emulation and make link play possible between two separate instances of MAME, either on the same PC or between two PCs over a local or wide area network (LAN/WAN). This fork does **not** account for any other emulated games that use these modified files, so using it for anything other than Time Crisis II is at your own risk.
+On release, two Time Crisis II cabinets could be linked together for co-op gameplay; however, the MAME project has not yet emulated that inter-cabinet link. This custom fork of **MAME 0.287** aims to add that emulation and make link play possible between two separate instances of MAME, either on the same PC or between two PCs over a local or wide area network (LAN/WAN). 
+
+This fork does **not** account for any other emulated games that use these modified files, so using it for anything other than Time Crisis II is at your own risk.
 
 ---
 
-## What you need
+## What you need:
 
-1. **The Time Crisis II ROM** `timecrs2.zip` (specifically the `US, TSS3 Ver.B` release)
-   — This was developed using the previously mentioned version. While other versions may work, I cannot guarantee it, nor do I plan to add support for them at this time.
+1. **The Time Crisis II ROM**
+   - `timecrs2.zip` (specifically the `US, TSS3 Ver.B` release)
+   - Other versions may work, but they have not been tested. I am not planning to add support for others at this time.
 
    > **No ROMs are included with this project. None are provided, linked to, or available on request.** This project is emulator code only.
    > You must own your own legal copy of Time Crisis II — for example, dumped from your own arcade board.
    > I do not condone, promote, or facilitate piracy.
 
-2. **A reasonably modern CPU**
-   The MAME emulator is CPU-based, so having a fast CPU on both linked machines is important. They do not need to be the same model, but **the whole session will run at the pace of the slower machine.**
-   — This was developed and tested on an AMD Ryzen 9 7950X3D and an Intel i7-12850HX.
+3. **A reasonably modern CPU**
+   - The MAME emulator is CPU-based, so having a fast CPU on both linked machines is important. They do not need to be the same model, but **the whole session will run at the pace of the slower machine.**
+   - This was developed and tested on an AMD Ryzen 9 7950X3D and an Intel i7-12850HX.
 
-3. **Windows 10 or 11 (64-bit)** with PowerShell (if you wish to use the included launcher scripts).
+4. **Windows 10/11 x64 and PowerShell**
 
 ---
 
@@ -28,22 +31,14 @@ On release, two Time Crisis II cabinets could be linked together for co-op gamep
 
 ---
 
-## Quick start
+# Quick start guide
 
-Pick the guide that matches how you want to play:
-
-| I want to... | Read this |
-|---|---|
-| Play alone, one screen | **[docs/SOLO.md](docs/SOLO.md)** |
-| Play link play on ONE PC (two game windows) | **[docs/LINKPLAY-LOOPBACK.md](docs/LINKPLAY-LOOPBACK.md)** |
-| Play link play on TWO PCs (Ethernet or WiFi) | **[docs/LINKPLAY-LAN.md](docs/LINKPLAY-LAN.md)** |
-
-The TL;DR for **single-PC link play**:
+## Single-PC link play:
 
 1. Unzip the ready-built release containing `mametc2.exe` into a new folder.
 2. Add your `timecrs2.zip` to the `roms` folder (do not unzip it).
 3. Open a PowerShell prompt and navigate to the folder where `mametc2.exe` and `launch_link_loopback.ps1` are stored.
-   — If you are blocked from running unsigned scripts from unknown sources, use `PowerShell.exe -ExecutionPolicy Bypass -File launch_link_loopback.ps1`
+   - If you are blocked from running unsigned scripts from unknown sources, use `PowerShell.exe -ExecutionPolicy Bypass -File launch_link_loopback.ps1`
 4. Run the single-PC launcher script `launch_link_loopback.ps1`.
 5. When prompted with `Delay between RED and BLUE launch in seconds (Enter = 0.85):`, press Enter to accept the default setting.
 6. In each MAME instance, press TAB to access the MAME/game menu.
@@ -55,15 +50,16 @@ The TL;DR for **single-PC link play**:
 
    **NOTE:** If you wish to change the window sizes and locations to a new default, you can copy the launcher script and make any changes you need.
 
-The TL;DR for **two-PC link play**:
+
+## Two-PC link play:
 
 1. Follow steps 1-6 in the **single-PC link play** instructions above for initial setup.
 2. Run the two-PC launcher script `launch_link_LAN.ps1` on both PCs.
 3. Press `C` to set each PC's LAN IP address in the interactive PowerShell script.
-   — If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
+   - If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current LAN profile (e.g., Domain/Private/Public).
-   — This is a server/client setup, so **only** the RED player needs to configure a Windows Firewall exception (and a port-forwarding rule if playing online).
-   — If you want to play over the internet, create a port-forwarding rule on your router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP.
+   - This is a server/client setup and the scripts are set up so that RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception (and a port-forwarding rule if playing online).
+   - If you want to play over the internet, create a port-forwarding rule on the RED players router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP.
 5. Choose either `1` or `2` in the script to match your color/side, and wait.
 6. In each MAME instance, press TAB to access the MAME/game menu.
    - Go to "Machine Configuration" and assign each instance a different cabinet identity (left/red, right/blue).
