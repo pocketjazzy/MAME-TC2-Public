@@ -12,12 +12,12 @@ cabinets is **the folder each one is started from**. The game saves its
 settings (cabinet identity, DIP switches, network settings) into the `cfg`
 and `nvram` subfolders of the folder it runs in — so:
 
-- Folder A = the red cabinet's identity
-- Folder B = the blue cabinet's identity
+On one PC, the loopback script
+maintains the second folder (`instance-b`):
+- \TC2-LinkPlay-v0.1\ = the red cabinet's identity
+- \TC2-LinkPlay-v0.1\instance-b\ = the blue cabinet's identity
 
-Same program, two folders, two cabinets. On one PC, the loopback script
-maintains the second folder (`instance-b`) for you. On two PCs, each PC's own
-folder simply *is* its cabinet.
+On two PCs, each PC's \TC2-LinkPlay-v0.1\ folder simply *is* its cabinet.
 
 Settings stick per folder. If you delete a folder's `cfg` and `nvram`
 subfolders, that cabinet forgets its identity and switches — just redo the
