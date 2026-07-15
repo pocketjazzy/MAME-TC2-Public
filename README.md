@@ -26,7 +26,7 @@ This fork does **not** account for any other emulated games that use these modif
 
 ## Two ways to get this custom MAME build (mametc2.exe)
 
-- **Download the pre-built release** — download `TC2-LinkPlay-vX.X-win64.zip`, unzip it, and add your own ROM to the `\roms\` folder.
+- **Download the latest pre-built release** — [`TC2-LinkPlay-vX.X-win64.zip`](https://github.com/pocketjazzy/MAME-TC2-Public/releases/), unzip it, and add your own ROM to the `\roms\` folder.
 - **Build it from source** — clone this repository and compile it yourself. See **[docs/BUILDING.md](docs/BUILDING.md)** for the step-by-step Windows guide.
 
 ---
