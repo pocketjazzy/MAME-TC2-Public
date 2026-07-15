@@ -7,12 +7,11 @@ On release, two Time Crisis II cabinets could be linked together for co-op gamep
 ## What you need
 
 1. **The Time Crisis II ROM** `timecrs2.zip` (specifically the `US, TSS3 Ver.B` release)
-   — This was developed using only the release mentioned above. While other releases may work, I cannot guarantee it, nor will I be adding support for others at this time.
+   — This was developed using the previously mentioned version. While other versions may work, I cannot guarantee it, nor do I plan to add support for them at this time.
 
    > **No ROMs are included with this project. None are provided, linked to, or available on request.** This project is emulator code only.
-
-   — You must own your own legal copy of Time Crisis II — for example, dumped from your own arcade board.
-   — I do not condone, promote, or facilitate piracy.
+   > You must own your own legal copy of Time Crisis II — for example, dumped from your own arcade board.
+   > I do not condone, promote, or facilitate piracy.
 
 2. **A reasonably modern CPU**
    The MAME emulator is CPU-based, so having a fast CPU on both linked machines is important. They do not need to be the same model, but **the whole session will run at the pace of the slower machine.**
