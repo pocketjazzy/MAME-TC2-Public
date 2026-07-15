@@ -45,7 +45,7 @@ This fork does **not** account for any other emulated games that use these modif
 7. Re-run the launcher script. The individual MAME instance settings you just configured are saved in their respective folders' cfg files.
 8. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
-   **NOTE:** If you wish to change the window sizes and locations to a new default, you can copy the launcher script and make any changes you need.
+   **NOTE:** If you wish to change the window sizes and locations to a new default, you can edit the the launcher scripts.
 
 
 ### Two-PC link play:
