@@ -66,6 +66,13 @@ This fork does **not** account for any other emulated games that use these modif
 
 ---
 
+# Troubleshooting
+
+Come back soon...
+
+
+---
+
 ## What's new in this build
 
 See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for the full list. In
