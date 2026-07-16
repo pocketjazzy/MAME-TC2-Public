@@ -47,10 +47,10 @@ Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the
 
 ### Two-PC link play:
 
-1. Follow steps 1-3 on both PCs
+1. Follow steps 1-3 on both PCs.
 2. Run `launch_tc2.ps1` on both PCs.
 3. On the BLUE PC, press `C` and enter the RED PC's IP address (BLUE's own entry can be left as-is — only RED's address is required).
-   - If you are on the same LAN, enter the REDs LAN IP. If playing online, enter REDs PUBLIC IP address.
+   - If you are on the same LAN, enter the RED's LAN IP. If playing online, enter RED's PUBLIC IP address.
    - If either PC is on WiFi, press `M` to switch the mode to `WiFi` on **both** PCs (the choice is saved for next time). WiFi mode widens the in-game partner-search countdown to give the pairing extra margin — see [docs/ADVANCED.md](docs/ADVANCED.md).
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
    - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
