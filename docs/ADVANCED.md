@@ -17,7 +17,7 @@ maintains the second folder (`instance-b`):
 - \TC2-LinkPlay-vX.X\ = the red cabinet's identity
 - \TC2-LinkPlay-vX.X\instance-b\ = the blue cabinet's identity
 
-On two PCs, each PC's \TC2-LinkPlay-v0.1\ folder simply *is* its cabinet
+On two PCs, each PC's \TC2-LinkPlay-vX.X\ folder simply *is* its cabinet
 (and picking BLUE in the launcher uses an `instance-b` folder there too, so
 one PC can play either side).
 
