@@ -37,21 +37,20 @@ Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the
 1. Unzip the ready-built release containing `mametc2.exe` into a new folder.
 2. Add your `timecrs2.zip` to the `roms` folder (do not unzip it).
 3. Open a PowerShell prompt and navigate to the folder where `mametc2.exe` and `launch_tc2.ps1` are stored.
+4. Run the launcher script `.\launch_tc2.ps1` and choose option `1` (Local Link Play).
    - If you are blocked from running unsigned scripts from unknown sources, use `PowerShell.exe -ExecutionPolicy Bypass -File launch_tc2.ps1`
-4. Run the launcher script `launch_tc2.ps1` and choose option `1` (Local Link Play).
 5. When prompted with `Delay between RED and BLUE launch in seconds (Enter = 0.85):`, press Enter to accept the default setting.
-6. On the very first run the script sets both cabinets up automatically: the main folder becomes the `left/red` cabinet, an `instance-b` folder is created for `right/blue`, and the **Link Play Enabled** DIP switch is turned ON for both. Nothing to configure.
-7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+6. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
    **NOTE:** If you wish to change the window sizes and locations to a new default, you can edit the launcher script.
 
 
 ### Two-PC link play:
 
-1. Follow steps 1-3 in the **single-PC link play** instructions above on BOTH PCs (each PC gets its own folder with `mametc2.exe`, `launch_tc2.ps1`, and the ROM).
+1. Follow steps 1-3 on both PCs
 2. Run `launch_tc2.ps1` on both PCs.
-3. On the BLUE PC, press `C` and enter the RED PC's IP address (BLUE's own entry can be left as-is — only RED's address is dialed).
-   - If you are on the same LAN, enter the RED PC's LAN IP. If playing online, enter the RED player's PUBLIC IP address.
+3. On the BLUE PC, press `C` and enter the RED PC's IP address (BLUE's own entry can be left as-is — only RED's address is required).
+   - If you are on the same LAN, enter the REDs LAN IP. If playing online, enter REDs PUBLIC IP address.
    - If either PC is on WiFi, press `M` to switch the mode to `WiFi` on **both** PCs (the choice is saved for next time). WiFi mode widens the in-game partner-search countdown to give the pairing extra margin — see [docs/ADVANCED.md](docs/ADVANCED.md).
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
    - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
