@@ -30,51 +30,49 @@ This fork does **not** account for any other emulated games that use these modif
 
 ## Quick start guide
 
+Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the cabinets for you on first run — no MAME menu setup is needed.
+
 ### Single-PC link play:
 
 1. Unzip the ready-built release containing `mametc2.exe` into a new folder.
 2. Add your `timecrs2.zip` to the `roms` folder (do not unzip it).
-3. Open a PowerShell prompt and navigate to the folder where `mametc2.exe` and `launch_link_loopback.ps1` are stored.
-   - If you are blocked from running unsigned scripts from unknown sources, use `PowerShell.exe -ExecutionPolicy Bypass -File launch_link_loopback.ps1`
-4. Run the single-PC launcher script `launch_link_loopback.ps1`.
+3. Open a PowerShell prompt and navigate to the folder where `mametc2.exe` and `launch_tc2.ps1` are stored.
+   - If you are blocked from running unsigned scripts from unknown sources, use `PowerShell.exe -ExecutionPolicy Bypass -File launch_tc2.ps1`
+4. Run the launcher script `launch_tc2.ps1` and choose option `1` (Local Link Play).
 5. When prompted with `Delay between RED and BLUE launch in seconds (Enter = 0.85):`, press Enter to accept the default setting.
-6. In each MAME instance, press TAB to access the MAME/game menu.
-   - Go to "Machine Configuration" on both and assign each instance a different cabinet identity. The left window should be `left/red`. The right window should be `right/blue`.
-   - Go to "Dip Switches" on both and switch **Link Play Enabled** to ON.
-   - Close both instances.
-7. Re-run the launcher script. The individual MAME instance settings you just configured are saved in their respective folders' cfg files.
-8. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+6. On the very first run the script sets both cabinets up automatically: the main folder becomes the `left/red` cabinet, an `instance-b` folder is created for `right/blue`, and the **Link Play Enabled** DIP switch is turned ON for both. Nothing to configure.
+7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
-   **NOTE:** If you wish to change the window sizes and locations to a new default, you can edit the launcher scripts.
+   **NOTE:** If you wish to change the window sizes and locations to a new default, you can edit the launcher script.
 
 
 ### Two-PC link play:
 
-1. Follow steps 1-6 in the **single-PC link play** instructions above for initial setup.
-2. Run the two-PC launcher script `launch_link_LAN.ps1` on both PCs.
-3. Press `C` to set each PC's LAN IP address in the interactive PowerShell script.
-   - If you are on the same LAN, enter the IP address of the other player's PC. If playing online, enter the PUBLIC IP address of the other PC and your own local LAN address.
+1. Follow steps 1-3 in the **single-PC link play** instructions above on BOTH PCs (each PC gets its own folder with `mametc2.exe`, `launch_tc2.ps1`, and the ROM).
+2. Run `launch_tc2.ps1` on both PCs.
+3. On the BLUE PC, press `C` and enter the RED PC's IP address (BLUE's own entry can be left as-is — only RED's address is dialed).
+   - If you are on the same LAN, enter the RED PC's LAN IP. If playing online, enter the RED player's PUBLIC IP address.
    - If either PC is on WiFi, press `M` to switch the mode to `WiFi` on **both** PCs (the choice is saved for next time). WiFi mode widens the in-game partner-search countdown to give the pairing extra margin — see [docs/ADVANCED.md](docs/ADVANCED.md).
 4. On the RED PC, create an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic. Be sure to apply the rule to the network type that matches your current network adapter profile (e.g., Domain/Private/Public).
    - This is a server/client setup and the script assumes RED is always the host, so **only** the RED player will need to configure a Windows Firewall exception.
    - If you want to play over the internet, create a port-forwarding rule on the RED player's router that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP.
-5. RED player chooses `1`, and BLUE player chooses `2`. Hit `Enter` to accept, and then wait for the other player to connect.
-   - BLUE player may need to temporarily set their `left/red` instance to `right/blue` in the machine configuration menu. See the Troubleshooting section below for more information. 
-7. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
-8. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
+5. RED player chooses `2` (Server), and BLUE player chooses `3` (Client). Each PC's cabinet folder and settings are created and verified automatically at this point.
+6. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
+7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
 ---
 
 # Troubleshooting
 
 1. If you're attempting a LAN/WAN session and you're not getting the countdown, check the following:
-   - Both instances have the Link Play DIP switch set to `ON`
-   - Both instances have *different* sides/colors configured in Machine Configuration
    - RED has configured an inbound Windows Firewall rule that allows any TCP port 9875-9876 traffic
    - (If WAN) RED has configured a port-forwarding rule that forwards any TCP port 9875-9876 traffic to the RED PC's LAN IP address
-   - The LAN script currently only uses the main folder's mametc2.exe and cfg file. This means that if you followed the Single-PC instructions exactly, you will end up with two players attempting to connect to each other using left/red settings. For this reason, the player who has decided to be BLUE will need to go back into Machine Configuration and temporarily change their `left/red` instance to `right/blue`. If both players attempt to start a link-mode session using the same side/color, the session will drop both cabinets back to solo mode, or fail to start the Stage 1 cutscene. I am working on a fix for this to make the script more dynamic and out-of-the-box ready.
+   - The BLUE PC has RED's correct IP saved (press `C` in the launcher to check/change it)
+   - Both PCs are using the same network mode (`M` in the launcher — Ethernet or WiFi)
+2. The launcher normally guarantees the cabinet settings (each side gets its own identity and the Link Play DIP switch ON, created on first run). If you have edited things manually via the MAME Tab menu, the launcher will detect a wrong side/color or a disabled DIP at launch and offer to fix it — answer `Y`.
+3. If a MAME instance fails to start, the launcher window now stays open and shows the error, along with a command you can run to see MAME's own error message. The usual causes are a missing `roms\timecrs2.zip` or an outdated graphics driver.
 
-For more background — how cabinet identity works (one program, two folders), why the staggered start matters, WiFi mode, and manual setup without the scripts — see **[docs/ADVANCED.md](docs/ADVANCED.md)**.
+For more background — how cabinet identity works (one program, two folders), why the staggered start matters, WiFi mode, headless/front-end use, and manual setup without the script — see **[docs/ADVANCED.md](docs/ADVANCED.md)**.
 
 ---
 
@@ -83,8 +81,9 @@ For more background — how cabinet identity works (one program, two folders), w
 See **[docs/CHANGELOG.md](docs/CHANGELOG.md)** for the full list. In
 brief: the two-cabinet link works (same PC or two PCs), there is an
 in-game **Link Play Config** menu for network settings, the link-play
-DIP switch is properly labeled now that it has been identified, and two
-launcher scripts help streamline the launch timing.
+DIP switch is properly labeled now that it has been identified, and a
+single all-in-one launcher (`launch_tc2.ps1`) sets the cabinets up
+automatically on first run and handles the launch timing.
 
 ---
 
@@ -92,9 +91,10 @@ launcher scripts help streamline the launch timing.
 
 **[docs/ADVANCED.md](docs/ADVANCED.md)** collects everything that goes
 beyond the quick-start guides above: how cabinet identity works (one
-program, two folders), what the launcher scripts do behind the scenes,
-manual setup without the scripts, WiFi mode, solo play, and playing over
-the internet.
+program, two folders), what the launcher does behind the scenes, manual
+setup without the script, WiFi mode, solo play, headless/front-end
+integration (BigBox, boot-to-game cabinets), and playing over the
+internet.
 
 The link code ships with sensible defaults that just work — you should
 not need to change anything. For experts, a small number of tuning

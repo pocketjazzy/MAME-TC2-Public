@@ -6,6 +6,36 @@ language.
 This is a fan preservation project. It is not affiliated with or
 endorsed by Namco or Bandai Namco.
 
+## v0.2 — 2026-07-16 — One launcher, zero setup
+
+- **One script for everything.** `launch_tc2.ps1` replaces the two
+  previous launcher scripts. A simple menu covers every way to play:
+  `1` link play on one PC, `2` network play as RED (the host), `3`
+  network play as BLUE. It remembers your IPs, network mode, and last
+  choice, can look up your public IP for internet play, and pressing
+  Enter repeats what you did last time.
+- **Zero-setup first run.** The launcher now configures the cabinets
+  for you: on a fresh install it creates each cabinet's folder, assigns
+  the red/blue identities, and switches **Link Play Enabled** on. The
+  old routine — open the Tab menu on both windows, set identities and
+  the DIP switch, close, relaunch — is gone. Unzip, add your ROM, run
+  the script, play.
+- **No more same-side mixups.** Picking RED or BLUE in the menu now
+  selects the matching cabinet folder automatically, so two PCs can no
+  longer accidentally both join as red (previously BLUE had to flip
+  its identity by hand in the Tab menu).
+- **Front-end and dedicated-cabinet friendly.** New `-Unattended`
+  (never prompts) and `-Fullscreen` options let launchers like BigBox,
+  boot-to-game arcade cabinets, and custom scripts start link play
+  headlessly. See the new headless section in
+  [ADVANCED.md](ADVANCED.md).
+- **Readable errors.** If something fails to start, the launcher
+  window now stays open, explains what went wrong, and shows the
+  command to see MAME's own error message.
+
+The game build (`mametc2.exe`) is unchanged from v0.1 — only the
+launcher and documentation changed.
+
 ## v0.1 — 2026-07-14 — Initial public release
 
 - **Time Crisis II two-cabinet link play works in MAME** — for the

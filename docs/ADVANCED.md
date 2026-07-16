@@ -1,9 +1,9 @@
 # Advanced notes
 
 Background and reference material that goes beyond the README's quick-start
-guides: how cabinet identity actually works, what the launcher scripts do for
-you, how to set everything up manually without them, WiFi mode, solo play, and
-the realities of playing over the internet.
+guides: how cabinet identity actually works, what the launcher does for you,
+how to set everything up manually without it, WiFi mode, solo play, headless
+and front-end use, and the realities of playing over the internet.
 
 ## One program, two folders (how cabinet identity works)
 
@@ -12,16 +12,20 @@ cabinets is **the folder each one is started from**. The game saves its
 settings (cabinet identity, DIP switches, network settings) into the `cfg`
 and `nvram` subfolders of the folder it runs in — so:
 
-On one PC, the loopback script
+On one PC, the launcher
 maintains the second folder (`instance-b`):
 - \TC2-LinkPlay-v0.1\ = the red cabinet's identity
 - \TC2-LinkPlay-v0.1\instance-b\ = the blue cabinet's identity
 
-On two PCs, each PC's \TC2-LinkPlay-v0.1\ folder simply *is* its cabinet.
+On two PCs, each PC's \TC2-LinkPlay-v0.1\ folder simply *is* its cabinet
+(and picking BLUE in the launcher uses an `instance-b` folder there too, so
+one PC can play either side).
 
-Settings stick per folder. If you delete a folder's `cfg` and `nvram`
-subfolders, that cabinet forgets its identity and switches — just redo the
-one-time Tab-menu setup for that folder.
+Settings stick per folder, and the launcher seeds a folder's identity + link
+DIP automatically the first time it uses it. If you delete a folder's `cfg`
+and `nvram` subfolders, that cabinet forgets its settings — the launcher will
+re-seed the identity on the next run, and the game rebuilds its own defaults
+(so things like gun calibration reset).
 
 ## Playing solo
 
@@ -37,21 +41,29 @@ timecrs2` and play. Two things worth knowing:
   play on its own — nothing breaks. For pure solo play the switch can stay
   off; leaving it on costs you nothing but those few startup seconds.
 
-## What the loopback script does (and its extras)
+## What the launcher does (and its extras)
 
-`launch_link_loopback.ps1` automates the one-PC setup:
+`launch_tc2.ps1` option `1` (Local Link Play) automates the one-PC setup:
 
 1. Creates the second cabinet's folder (`instance-b`) next to the program,
-   if it doesn't exist yet.
+   if it doesn't exist yet, and seeds both folders' identities + link DIP
+   on the first run.
 2. Starts the RED cabinet from the main folder.
 3. Waits a moment (the delay you chose) so red is listening first.
 4. Starts the BLUE cabinet from `instance-b`, pointed at the same `roms`
    folder — no ROM copy needed.
 5. Places the two windows side by side on your screen.
 
+Options `2`/`3` do the same for a network session: `2` runs the RED cabinet
+from the script's folder and waits; `3` runs the BLUE cabinet from
+`instance-b` and dials RED. The two PCs coordinate over TCP port 9875 (a
+3-2-1 countdown, a health check that RED's game actually started, then BLUE
+launches) before the game link itself takes over on port 9876.
+
 Useful extras: `-KillExisting` closes any stuck game windows first;
-`-SoloListener` / `-SoloConnector` start just one side; `-NoPosition` skips
-the window placement.
+`-SoloListener` / `-SoloConnector` start just one side of a loopback pair;
+`-NoPosition` skips the window placement; `-Log` writes MAME's `error.log`
+in each cabinet folder (off by default).
 
 ## Manual setup without the scripts
 
@@ -80,7 +92,7 @@ copies through the PC's own internal loopback connection.
 
 ### Two PCs
 
-You can skip the LAN script and use the in-game **Link Play Config** menu
+You can skip the launcher and use the in-game **Link Play Config** menu
 instead (press Tab; the menu sits between DIP Switches and Machine
 Configuration):
 
@@ -96,7 +108,7 @@ PC's game. The red PC still needs the firewall rule described in the README.
 ## Why the staggered start?
 
 The red side must already be listening when the blue side dials in — if blue
-dials first, nobody answers and the pairing can fail. The LAN script gets
+dials first, nobody answers and the pairing can fail. The launcher gets
 this right for you: it verifies the red game actually started and survived
 its first three seconds (a health check) before it releases the blue side,
 plus a small extra delay for margin. If you launch manually, just remember:
@@ -104,9 +116,10 @@ plus a small extra delay for margin. If you launch manually, just remember:
 
 ## WiFi mode
 
-WiFi works. In the LAN script's menu, press **M** to select **WiFi** mode on
-**both** PCs (the choice is remembered, alongside the IPs, in
-`lan_settings.json`). WiFi mode widens the in-game partner-search countdown
+WiFi works. In the launcher's menu, press **M** to select **WiFi** mode on
+**both** PCs (the choice is remembered, alongside the IPs and your last menu
+choice, in `launcher_settings.json`). WiFi mode widens the in-game
+partner-search countdown
 (the counter starts at 600 on the red side and 450 on the blue side —
 roughly double the standard 300) to give the pairing extra margin on a less
 predictable connection. For the smoothest play, wired Ethernet is still the
@@ -122,6 +135,58 @@ latency; internet delay slows the game down **for both players**, and
 playability over the internet is **not guaranteed**. This build is designed
 for a local network; the internet is an experiment you run at your own risk
 (of frustration).
+
+## Headless & front-end integration
+
+For front-ends (LaunchBox/BigBox and friends), boot-to-game dedicated
+cabinets, or your own wrapper scripts, the launcher runs fully
+non-interactive. `-Unattended` guarantees it never stops at a prompt, and
+`-Fullscreen` gives the dedicated-cabinet look:
+
+```
+powershell -ExecutionPolicy Bypass -File launch_tc2.ps1 -Mode Loopback -Unattended
+powershell -ExecutionPolicy Bypass -File launch_tc2.ps1 -Mode LanRed  -Unattended -Fullscreen
+powershell -ExecutionPolicy Bypass -File launch_tc2.ps1 -Mode LanBlue -ListenerIP 192.168.1.10 -Unattended -Fullscreen
+```
+
+- `-Mode Loopback | LanRed | LanBlue` picks what the menu's `1`/`2`/`3` pick.
+  With `-Unattended` and no `-Mode`, the last saved menu choice is reused.
+- Everything the menu can set has a parameter: `-ListenerIP` (RED's address),
+  `-ConnectorIP`, `-Network Ethernet|WiFi`, `-DelaySeconds`, `-StaggerMs`,
+  `-WorkDir <folder>` (use a specific cabinet folder), `-Log` (write MAME's
+  error.log, off by default).
+- With `-Unattended`, first-run cabinet seeding still happens, and any
+  identity/DIP fix that would normally prompt is applied automatically.
+- Exit code is `0` on a successful launch and `1` on any failure, so a
+  wrapper can react.
+
+### Launching mametc2.exe directly (no script at all)
+
+The game itself is front-end friendly. A cabinet folder that has been set up
+once (by the launcher or the Tab menu) boots straight into link play with a
+bare command from that folder:
+
+```
+.\mametc2.exe timecrs2
+```
+
+Network settings resolve in this order: command line, then the folder's
+saved **Link Play Config**, then loopback defaults — and the cabinet's
+red/blue identity decides whether it listens or connects. Useful arguments:
+
+- `-comm_localport 9876 -comm_remotehost ""` — force the RED/listener role.
+- `-comm_remotehost <redIP> -comm_remoteport 9876` — force the BLUE/connector
+  role, aimed at the red PC.
+- `-rompath <folder>` — where `timecrs2.zip` lives.
+- `-cfg_directory <path>` and `-nvram_directory <path>` — point one exe at
+  any cabinet identity folder **without** changing the working directory
+  (handy when a front-end fixes the working directory).
+- The WiFi pairing-window widening is an environment variable, settable in
+  any wrapper: `NAMCOS23_PATCH_LINK_WAIT=60` on red / `45` on blue.
+
+One caveat: direct launches skip the launcher's rendezvous and health check,
+so the ordering is on you — **start red first, wait a few seconds, then
+start blue** within the partner-search countdown.
 
 ## The golden rule
 

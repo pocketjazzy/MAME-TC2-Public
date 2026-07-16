@@ -30,8 +30,11 @@ from the private development tree. **Read it before every sync or release.**
   guides (quick-start lives in README.md; SOLO.md / LINKPLAY-LOOPBACK.md /
   LINKPLAY-LAN.md were retired 2026-07-15, their unique content merged into
   README.md + docs/ADVANCED.md)
-- `launch_link_loopback.ps1`, `launch_link_LAN.ps1` — the **production**
-  launcher scripts (end-user variants, no experiment plumbing)
+- `launch_tc2.ps1` — THE production launcher (all-in-one, P069 2026-07-16;
+  end-user variant: no -PatchEnv plumbing, -Log opt-in). The older
+  `launch_link_loopback.ps1` / `launch_link_LAN.ps1` are DEPRECATED —
+  superseded, no longer referenced by any doc, retained on the branch
+  pending removal approval; they do NOT go into release zips.
 - `PRODUCTION-MANIFEST.md` — this file
 
 ---
@@ -119,8 +122,7 @@ Layout of the downloadable release archive:
 ```
 TC2-LinkPlay-v<version>\
   mametc2.exe                   (built per docs/BUILDING.md)
-  launch_link_loopback.ps1      (production variant)
-  launch_link_LAN.ps1           (production variant)
+  launch_tc2.ps1                (the all-in-one launcher)
   README.md
   docs\
     BUILDING.md
