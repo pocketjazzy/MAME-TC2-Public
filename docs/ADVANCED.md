@@ -14,8 +14,8 @@ and `nvram` subfolders of the folder it runs in — so:
 
 On one PC, the launcher
 maintains the second folder (`instance-b`):
-- \TC2-LinkPlay-v0.1\ = the red cabinet's identity
-- \TC2-LinkPlay-v0.1\instance-b\ = the blue cabinet's identity
+- \TC2-LinkPlay-vX.X\ = the red cabinet's identity
+- \TC2-LinkPlay-vX.X\instance-b\ = the blue cabinet's identity
 
 On two PCs, each PC's \TC2-LinkPlay-v0.1\ folder simply *is* its cabinet
 (and picking BLUE in the launcher uses an `instance-b` folder there too, so
