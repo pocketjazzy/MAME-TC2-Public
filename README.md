@@ -6,6 +6,12 @@ This fork does **not** account for any other emulated games that use these modif
 
 ---
 
+## Gameplay:
+
+[mametc2-gameplay_trimmed.webm](https://github.com/user-attachments/assets/6ff35add-ac17-4ece-9f3f-01cd4cf11867)
+
+---
+
 ## What you need:
 
 1. **The Time Crisis II ROM**
