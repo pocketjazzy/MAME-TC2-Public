@@ -9,6 +9,9 @@
 #   M = toggle Ethernet/WiFi network mode (default Ethernet; saved; use the
 #       SAME mode on both PCs - WiFi widens the in-game pairing window)
 #   P = look up this PC's PUBLIC IP (api.ipify.org; for internet play)
+#   V = per-cabinet DISPLAY settings (monitor / fullscreen / window size and
+#       position for RED and BLUE independently; saved)
+#   R = reset the display settings back to the script defaults
 #   Enter = repeat the last-used choice (saved in launcher_settings.json)
 #
 # ZERO-SETUP FIRST RUN: a cabinet folder with no cfg\timecrs2.cfg is seeded
@@ -25,6 +28,21 @@
 #   -Unattended never prompts: the choice must come from -Mode or the saved
 #   settings, and cfg identity/DIP fixes are applied automatically.
 #   -Log writes MAME's error.log in each cabinet folder (off by default).
+#   Display params (P070; override the saved V-menu settings for the run):
+#     -RedMonitor 1 / -BlueMonitor 2   which physical display (a number,
+#         DISPLAY2, or \\.\DISPLAY2; MAME needs the exact device name)
+#     -RedResolution 800x600 / -BlueResolution 800x600   windowed PICTURE
+#         size (the launcher resizes the window itself - MAME treats
+#         -resolution as a maximum only in windowed mode)
+#     -RedFullscreen / -BlueFullscreen   per cabinet (-Fullscreen = both);
+#         fullscreen keeps the desktop video mode (no -switchres by default).
+#         LOOPBACK fullscreen cabinets run as BORDERLESS windows sized to the
+#         monitor (two native-fullscreen MAME instances on one PC fight for
+#         the display); LAN modes use MAME's native fullscreen (one instance
+#         per PC, no conflict).
+#     -BackgroundInput   loopback only: both windows keep receiving input
+#         while unfocused (two-gun / two-mouse one-PC play; off by default
+#         because a shared keyboard would drive both cabinets at once)
 #
 # How the two-PC rendezvous works (no clock/NTP sync needed - MAME's link does
 # frame sync itself; the in-game partner-search countdown is the join window:
@@ -52,8 +70,8 @@ param(
     [switch]$SoloListener,              # loopback debug: RED instance only
     [switch]$SoloConnector,             # loopback debug: BLUE instance only
     [int]$GamePort = 9876,              # MAME link port (C139 transport)
-    [int]$ListenerX  = 10,              # loopback window placement
-    [int]$ListenerY  = 50,
+    [int]$ListenerX  = 10,              # window placement; relative to the cabinet's
+    [int]$ListenerY  = 50,              #   monitor when one is configured
     [int]$ConnectorX = 700,
     [int]$ConnectorY = 50,
     [switch]$NoPosition,
@@ -65,9 +83,16 @@ param(
     [string]$ConnectorIP = '',          # BLUE PC IP; empty = saved or built-in default
     [ValidateSet('Ethernet','WiFi','')]
     [string]$Network = '',              # empty = saved or Ethernet (the default)
+    [string]$RedMonitor = '',           # physical display for RED: 1, DISPLAY1, or \\.\DISPLAY1
+    [string]$BlueMonitor = '',          # physical display for BLUE
+    [string]$RedResolution = '',        # RED windowed size WxH (e.g. 800x600)
+    [string]$BlueResolution = '',       # BLUE windowed size WxH
+    [switch]$RedFullscreen,             # RED fullscreen (use -RedFullscreen:$false to force windowed)
+    [switch]$BlueFullscreen,            # BLUE fullscreen
+    [switch]$BackgroundInput,           # loopback: pass -background_input to BOTH instances
     [switch]$Log,                       # write MAME's error.log in each cabinet folder (off by default)
     [switch]$Unattended,                # headless: never prompt
-    [switch]$Fullscreen                 # dedicated-cabinet display: -nowindow
+    [switch]$Fullscreen                 # BOTH cabinets fullscreen (per-cabinet switches override)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,6 +130,63 @@ function Test-IPv4 { param([string]$s) $ip=$null; return ([System.Net.IPAddress]
 function Get-LocalIPv4List {
     $addrs = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName())
     return $addrs | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | ForEach-Object { $_.IPAddressToString }
+}
+
+# ---- Display helpers (P070) --------------------------------------------------------
+# MAME 0.287 facts: -screen wants the EXACT OS device name (\\.\DISPLAY1, not an
+# index); -resolution WxH sizes the window (windowed mode); fullscreen = absence
+# of -window and keeps the desktop video mode (no -switchres unless asked); MAME
+# has NO window-position option, so positioning stays external (SetWindowPos).
+
+function Get-DisplayMonitors {
+    if (-not ('System.Windows.Forms.Screen' -as [type])) { Add-Type -AssemblyName System.Windows.Forms }
+    return [System.Windows.Forms.Screen]::AllScreens | Sort-Object DeviceName
+}
+
+# Accepts '2', 'DISPLAY2', or '\\.\DISPLAY2' -> canonical '\\.\DISPLAY2'; ''/auto -> ''.
+function ConvertTo-MonitorDeviceName {
+    param([string]$Value)
+    $v = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($v) -or $v -match '^(?i)a(uto)?$') { return '' }
+    if ($v -match '^\d+$') { return ('\\.\DISPLAY' + $v) }
+    if ($v -match '^(?i)DISPLAY(\d+)$') { return ('\\.\DISPLAY' + $Matches[1]) }
+    if ($v -match '^\\\\\.\\(?i)DISPLAY(\d+)$') { return ('\\.\DISPLAY' + $Matches[1]) }
+    throw "Invalid monitor '$Value' - use a number (e.g. 2), DISPLAY2, or \\.\DISPLAY2."
+}
+
+function Test-ResolutionString { param([string]$s) return ($s -match '^\d{2,5}x\d{2,5}$') }
+
+# Per-cabinet MAME display flags from a resolved display config hashtable.
+function Get-MameDisplayFlags {
+    param([hashtable]$Disp)
+    $screenFlag = if (-not [string]::IsNullOrWhiteSpace($Disp.Monitor)) { (' -screen "{0}"' -f $Disp.Monitor) } else { '' }
+    $logFlag = if ($Log) { ' -log' } else { '' }
+    if ($Disp.Fullscreen) {
+        return ('-nowindow -skip_gameinfo' + $logFlag + $screenFlag)
+    }
+    return ('-window -nomaximize -resolution {0}x{1} -prescale 1 -nokeepaspect -skip_gameinfo' -f $Disp.Width, $Disp.Height) + $logFlag + $screenFlag
+}
+
+# Where to place a cabinet's window. Positions are RELATIVE TO THE CABINET'S
+# MONITOR when one is configured (what a user means by "monitor 2 at 400,50");
+# with no monitor set they are plain desktop coordinates. Explicit X/Y wins;
+# auto = the classic side-by-side defaults, or $null for LAN (auto = leave the
+# window where MAME puts it).
+function Get-CabinetWindowPos {
+    param([hashtable]$Disp, [int]$DefaultX, [int]$DefaultY, [bool]$AutoUsesDefault)
+    $x = $null; $y = $null
+    if ($null -ne $Disp.X) {
+        $x = [int]$Disp.X; $y = [int]$Disp.Y
+    } elseif ($AutoUsesDefault) {
+        $x = $DefaultX; $y = $DefaultY
+    } else {
+        return $null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Disp.Monitor)) {
+        $s = Get-DisplayMonitors | Where-Object { $_.DeviceName -eq $Disp.Monitor } | Select-Object -First 1
+        if ($s) { $x += $s.Bounds.X; $y += $s.Bounds.Y }
+    }
+    return @{ X = $x; Y = $y }
 }
 
 function Resolve-MameExe {
@@ -161,19 +243,101 @@ public static class Win32Window {
 "@
 }
 
-function Wait-AndMoveWindow {
-    param([System.Diagnostics.Process]$Process, [int]$X, [int]$Y, [int]$TimeoutMs = 15000, [string]$Label = '')
+# Wait for a process's main window handle (shared by the placement helpers).
+function Wait-ForMainWindow {
+    param([System.Diagnostics.Process]$Process, [int]$TimeoutMs = 15000, [string]$Label = '')
     $start = [Environment]::TickCount
     while ($Process.MainWindowHandle -eq [IntPtr]::Zero) {
         if (([Environment]::TickCount - $start) -gt $TimeoutMs) {
             Write-Warning "Timed out waiting for $Label main window (PID $($Process.Id))"
-            return
+            return [IntPtr]::Zero
         }
         Start-Sleep -Milliseconds 50
         $Process.Refresh()
     }
-    $flags = [Win32Window]::SWP_NOSIZE -bor [Win32Window]::SWP_NOZORDER -bor [Win32Window]::SWP_NOACTIVATE
-    [void][Win32Window]::SetWindowPos($Process.MainWindowHandle, [IntPtr]::Zero, $X, $Y, 0, 0, $flags)
+    return $Process.MainWindowHandle
+}
+
+# Window/client rectangle access. Separate class so consoles that loaded an
+# older script version do not hit a stale type missing these members.
+if (-not ('Win32Metrics' -as [type])) {
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win32Metrics {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")]
+    public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+}
+"@
+}
+
+# Place AND size a windowed cabinet. ClientW/H is the game PICTURE size - MAME
+# treats -resolution as a maximum only in windowed mode (the window always
+# opens at the native 640x480), so the launcher resizes externally, adding the
+# measured frame/title margins so the CLIENT area lands on the requested size.
+# X/Y $null = keep the window where it is (size-only change).
+function Set-CabinetWindow {
+    param([System.Diagnostics.Process]$Process, $X, $Y, [int]$ClientW, [int]$ClientH, [int]$TimeoutMs = 15000, [string]$Label = '')
+    $hwnd = Wait-ForMainWindow -Process $Process -TimeoutMs $TimeoutMs -Label $Label
+    if ($hwnd -eq [IntPtr]::Zero) { return }
+    $wr = New-Object Win32Metrics+RECT
+    $cr = New-Object Win32Metrics+RECT
+    [void][Win32Metrics]::GetWindowRect($hwnd, [ref]$wr)
+    [void][Win32Metrics]::GetClientRect($hwnd, [ref]$cr)
+    $extraW = ($wr.Right - $wr.Left) - ($cr.Right - $cr.Left)
+    $extraH = ($wr.Bottom - $wr.Top) - ($cr.Bottom - $cr.Top)
+    $nx = if ($null -ne $X) { [int]$X } else { $wr.Left }
+    $ny = if ($null -ne $Y) { [int]$Y } else { $wr.Top }
+    $flags = [Win32Window]::SWP_NOZORDER -bor [Win32Window]::SWP_NOACTIVATE
+    [void][Win32Window]::SetWindowPos($hwnd, [IntPtr]::Zero, $nx, $ny, ($ClientW + $extraW), ($ClientH + $extraH), $flags)
+}
+
+# Style access for the borderless conversion (separate class from Win32Window so
+# consoles that loaded an older script version don't hit a stale type).
+if (-not ('Win32Style' -as [type])) {
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win32Style {
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+}
+"@
+}
+
+# Turn a MAME window into a borderless window filling the given monitor bounds.
+# Used for loopback "fullscreen": two native-fullscreen MAME instances on one PC
+# fight for the display (user-found), borderless windows coexist cleanly.
+function Set-BorderlessWindow {
+    param([System.Diagnostics.Process]$Process, [int]$X, [int]$Y, [int]$W, [int]$H, [int]$TimeoutMs = 15000, [string]$Label = '')
+    $hwnd = Wait-ForMainWindow -Process $Process -TimeoutMs $TimeoutMs -Label $Label
+    if ($hwnd -eq [IntPtr]::Zero) { return }
+    $GWL_STYLE = -16
+    # Strip WS_CAPTION|WS_THICKFRAME|WS_SYSMENU|WS_MINIMIZEBOX|WS_MAXIMIZEBOX = 0x00CF0000
+    $style = [Win32Style]::GetWindowLong($hwnd, $GWL_STYLE)
+    [void][Win32Style]::SetWindowLong($hwnd, $GWL_STYLE, ($style -band (-bnot 0x00CF0000)))
+    $SWP_FRAMECHANGED = 0x0020
+    $SWP_SHOWWINDOW   = 0x0040
+    $flags = $SWP_FRAMECHANGED -bor $SWP_SHOWWINDOW -bor [Win32Window]::SWP_NOZORDER -bor [Win32Window]::SWP_NOACTIVATE
+    [void][Win32Window]::SetWindowPos($hwnd, [IntPtr]::Zero, $X, $Y, $W, $H, $flags)
+}
+
+# The monitor a cabinet's display config lands on (configured one if attached,
+# else the primary).
+function Get-CabinetMonitor {
+    param([hashtable]$Disp)
+    $screens = @(Get-DisplayMonitors)
+    if (-not [string]::IsNullOrWhiteSpace($Disp.Monitor)) {
+        $s = $screens | Where-Object { $_.DeviceName -eq $Disp.Monitor } | Select-Object -First 1
+        if ($s) { return $s }
+    }
+    return ($screens | Where-Object { $_.Primary } | Select-Object -First 1)
 }
 
 # ---- TC2 banner ------------------------------------------------------------------
@@ -339,10 +503,35 @@ if ([string]::IsNullOrWhiteSpace($Network)) {
 }
 $savedChoice = if ($saved -and $saved.PSObject.Properties['Choice'] -and ([string]$saved.Choice) -in @('Loopback','LanRed','LanBlue')) { [string]$saved.Choice } else { '' }
 
+# Saved per-cabinet display settings (P070). Defaults reproduce the classic
+# behavior: windowed 640x480, auto position (side-by-side), auto monitor.
+# Old settings files without a Display block load fine (all-defaults).
+$dispSaved = @{
+    Red  = @{ Monitor = ''; Fullscreen = $false; Width = 640; Height = 480; X = $null; Y = $null }
+    Blue = @{ Monitor = ''; Fullscreen = $false; Width = 640; Height = 480; X = $null; Y = $null }
+}
+if ($saved -and $saved.PSObject.Properties['Display']) {
+    foreach ($side in @('Red','Blue')) {
+        if (-not $saved.Display.PSObject.Properties[$side]) { continue }
+        $node = $saved.Display.$side
+        $d = $dispSaved[$side]
+        if ($node.PSObject.Properties['Monitor']) {
+            try { $d.Monitor = ConvertTo-MonitorDeviceName ([string]$node.Monitor) } catch { $d.Monitor = '' }
+        }
+        if ($node.PSObject.Properties['Fullscreen']) { $d.Fullscreen = [bool]$node.Fullscreen }
+        if ($node.PSObject.Properties['Width']  -and ([int]$node.Width)  -ge 160 -and ([int]$node.Width)  -le 7680) { $d.Width  = [int]$node.Width }
+        if ($node.PSObject.Properties['Height'] -and ([int]$node.Height) -ge 120 -and ([int]$node.Height) -le 4320) { $d.Height = [int]$node.Height }
+        if ($node.PSObject.Properties['X'] -and $null -ne $node.X) { $d.X = [int]$node.X }
+        if ($node.PSObject.Properties['Y'] -and $null -ne $node.Y) { $d.Y = [int]$node.Y }
+    }
+}
+
 function Save-LauncherSettings {
-    param([string]$LIP, [string]$CIP, [string]$Net, [string]$ChoiceSel, [string]$Path)
+    param([string]$LIP, [string]$CIP, [string]$Net, [string]$ChoiceSel, [hashtable]$DisplayCfg, [string]$Path)
     try {
-        @{ ListenerIP = $LIP; ConnectorIP = $CIP; Network = $Net; Choice = $ChoiceSel; SavedAt = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json | Set-Content -Path $Path -Encoding ASCII
+        # -Depth 4: the nested Display block sits at depth 3; PS 5.x default
+        # depth 2 would silently stringify it.
+        @{ ListenerIP = $LIP; ConnectorIP = $CIP; Network = $Net; Choice = $ChoiceSel; Display = $DisplayCfg; SavedAt = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') } | ConvertTo-Json -Depth 4 | Set-Content -Path $Path -Encoding ASCII
     } catch { Write-Host ("WARNING: could not save settings to {0}: {1}" -f $Path, $_.Exception.Message) -ForegroundColor Yellow }
 }
 
@@ -353,6 +542,68 @@ function Read-IPWithDefault {
         if ([string]::IsNullOrWhiteSpace($entry)) { return $Current }
         if (Test-IPv4 $entry) { return $entry }
         Write-Host '  Not a valid IPv4 address - try again (Enter keeps the current value).' -ForegroundColor Yellow
+    }
+}
+
+# One-line summary of a cabinet's saved display config.
+function Format-DispSummary {
+    param([hashtable]$Disp)
+    $mon = if ($Disp.Monitor) { $Disp.Monitor } else { 'auto' }
+    if ($Disp.Fullscreen) { return ("monitor {0}, FULLSCREEN" -f $mon) }
+    $pos = if ($null -ne $Disp.X) { ('{0},{1}' -f $Disp.X, $Disp.Y) } else { 'auto' }
+    return ("monitor {0}, windowed {1}x{2} at {3}" -f $mon, $Disp.Width, $Disp.Height, $pos)
+}
+
+# Interactive per-cabinet display editor (menu option V). Mutates $dispSaved;
+# the caller saves. Enter keeps the current value on every prompt.
+function Edit-DisplaySettings {
+    $screens = @(Get-DisplayMonitors)
+    Write-Host ''
+    Write-Host 'Detected monitors:' -ForegroundColor Cyan
+    for ($i = 0; $i -lt $screens.Count; $i++) {
+        $s = $screens[$i]
+        $primary = if ($s.Primary) { '  (primary)' } else { '' }
+        Write-Host ("  {0} = {1}  {2}x{3} at {4},{5}{6}" -f ($i + 1), $s.DeviceName, $s.Bounds.Width, $s.Bounds.Height, $s.Bounds.X, $s.Bounds.Y, $primary)
+    }
+    Write-Host ''
+    Write-Host 'Currently configured:' -ForegroundColor Cyan
+    Write-Host ("  RED : {0}" -f (Format-DispSummary -Disp $dispSaved.Red))  -ForegroundColor Red
+    Write-Host ("  BLUE: {0}" -f (Format-DispSummary -Disp $dispSaved.Blue)) -ForegroundColor Cyan
+    foreach ($side in @('Red','Blue')) {
+        $d = $dispSaved[$side]
+        $color = if ($side -eq 'Red') { 'Red' } else { 'Cyan' }
+        Write-Host ''
+        Write-Host ("--- {0} cabinet ---" -f $side.ToUpper()) -ForegroundColor $color
+        while ($true) {
+            $cur = if ($d.Monitor) { $d.Monitor } else { 'auto' }
+            $e = Read-Host ("  Monitor number, or a = auto [{0}]" -f $cur)
+            if ([string]::IsNullOrWhiteSpace($e)) { break }
+            try { $d.Monitor = ConvertTo-MonitorDeviceName $e; break }
+            catch { Write-Host '    Enter a number from the list above, or a for auto.' -ForegroundColor Yellow }
+        }
+        $cur = if ($d.Fullscreen) { 'y' } else { 'n' }
+        $e = Read-Host ("  Fullscreen? y/n [{0}]" -f $cur)
+        if ($e -match '^[Yy]') { $d.Fullscreen = $true } elseif ($e -match '^[Nn]') { $d.Fullscreen = $false }
+        if (-not $d.Fullscreen) {
+            while ($true) {
+                $e = Read-Host ("  Window size WxH [{0}x{1}]" -f $d.Width, $d.Height)
+                if ([string]::IsNullOrWhiteSpace($e)) { break }
+                if (Test-ResolutionString $e) {
+                    $p = $e -split 'x'
+                    $d.Width = [int]$p[0]; $d.Height = [int]$p[1]
+                    break
+                }
+                Write-Host '    Use WxH, e.g. 800x600.' -ForegroundColor Yellow
+            }
+            while ($true) {
+                $cur = if ($null -ne $d.X) { ('{0},{1}' -f $d.X, $d.Y) } else { 'auto' }
+                $e = Read-Host ("  Window position x,y on that monitor, or a = auto [{0}]" -f $cur)
+                if ([string]::IsNullOrWhiteSpace($e)) { break }
+                if ($e -match '^(?i)a(uto)?$') { $d.X = $null; $d.Y = $null; break }
+                if ($e -match '^\s*(-?\d+)\s*,\s*(-?\d+)\s*$') { $d.X = [int]$Matches[1]; $d.Y = [int]$Matches[2]; break }
+                Write-Host '    Use x,y (e.g. 0,0 or 1920,50) or a for auto.' -ForegroundColor Yellow
+            }
+        }
     }
 }
 
@@ -386,28 +637,52 @@ if ([string]::IsNullOrWhiteSpace($Mode)) {
         Write-Host ("  C = change saved IPs (RED {0} / BLUE {1})" -f $ListenerIP, $ConnectorIP)
         Write-Host ("  M = network mode: currently {0} (See ADVANCED.md for details)" -f $Network)
         Write-Host  '  P = show this PC''s public IP'
+        Write-Host  '  V = display settings (monitor / fullscreen / window size + position per cabinet)'
+        Write-Host  '  R = reset display settings to defaults'
         Write-Host ''
         if ($notice) {
             Write-Host $notice -ForegroundColor $noticeColor
             Write-Host ''
         }
-        $promptTxt = if ($savedChoice) { ("Press 1, 2, 3, C, M or P (Enter = last: {0})" -f $savedChoice) } else { 'Press 1, 2, 3, C, M or P' }
+        $promptTxt = if ($savedChoice) { ("Press 1, 2, 3, C, M, P, V or R (Enter = last: {0})" -f $savedChoice) } else { 'Press 1, 2, 3, C, M, P, V or R' }
         $pick = Read-Host $promptTxt
         if ([string]::IsNullOrWhiteSpace($pick) -and $savedChoice) { $Mode = $savedChoice; break }
         if ($menuMap.ContainsKey($pick)) { $Mode = $menuMap[$pick]; break }
         if ($pick -match '^[Cc]$') {
             $ListenerIP  = Read-IPWithDefault -Label 'RED (host/listener) PC IP' -Current $ListenerIP
             $ConnectorIP = Read-IPWithDefault -Label 'BLUE (connector) PC IP' -Current $ConnectorIP
-            Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -Path $settingsFile
+            Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -DisplayCfg $dispSaved -Path $settingsFile
             $notice = ("Saved: RED {0} / BLUE {1}" -f $ListenerIP, $ConnectorIP)
             $noticeColor = 'Green'
             continue
         }
         if ($pick -match '^[Mm]$') {
             $Network = if ($Network -eq 'WiFi') { 'Ethernet' } else { 'WiFi' }
-            Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -Path $settingsFile
+            Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -DisplayCfg $dispSaved -Path $settingsFile
             $notice = ("Network mode -> {0} (saved)" -f $Network)
             $noticeColor = 'Green'
+            continue
+        }
+        if ($pick -match '^[Vv]$') {
+            Edit-DisplaySettings
+            Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -DisplayCfg $dispSaved -Path $settingsFile
+            $notice = 'Display settings saved.'
+            $noticeColor = 'Green'
+            continue
+        }
+        if ($pick -match '^[Rr]$') {
+            $confirm = Read-Host 'Reset display settings to defaults? (y/N)'
+            if ($confirm -match '^[Yy]') {
+                foreach ($side in @('Red','Blue')) {
+                    $dispSaved[$side] = @{ Monitor = ''; Fullscreen = $false; Width = 640; Height = 480; X = $null; Y = $null }
+                }
+                Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $savedChoice -DisplayCfg $dispSaved -Path $settingsFile
+                $notice = 'Display settings reset to defaults (windowed 640x480, side by side, auto monitor).'
+                $noticeColor = 'Green'
+            } else {
+                $notice = 'Reset cancelled - display settings unchanged.'
+                $noticeColor = 'Yellow'
+            }
             continue
         }
         if ($pick -match '^[Pp]$') {
@@ -436,7 +711,37 @@ if ([string]::IsNullOrWhiteSpace($Mode)) {
 }
 
 # Persist the values actually used this run (captures command-line overrides too).
-Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $Mode -Path $settingsFile
+Save-LauncherSettings -LIP $ListenerIP -CIP $ConnectorIP -Net $Network -ChoiceSel $Mode -DisplayCfg $dispSaved -Path $settingsFile
+
+# ---- Effective per-cabinet display config (P070): CLI > saved > defaults ----------
+$redDisp  = $dispSaved.Red.Clone()
+$blueDisp = $dispSaved.Blue.Clone()
+if ($PSBoundParameters.ContainsKey('RedMonitor'))  { $redDisp.Monitor  = ConvertTo-MonitorDeviceName $RedMonitor }
+if ($PSBoundParameters.ContainsKey('BlueMonitor')) { $blueDisp.Monitor = ConvertTo-MonitorDeviceName $BlueMonitor }
+if ($PSBoundParameters.ContainsKey('RedResolution')) {
+    if (-not (Test-ResolutionString $RedResolution)) { throw "Invalid -RedResolution '$RedResolution' (use WxH, e.g. 800x600)." }
+    $p = $RedResolution -split 'x'; $redDisp.Width = [int]$p[0]; $redDisp.Height = [int]$p[1]
+}
+if ($PSBoundParameters.ContainsKey('BlueResolution')) {
+    if (-not (Test-ResolutionString $BlueResolution)) { throw "Invalid -BlueResolution '$BlueResolution' (use WxH, e.g. 800x600)." }
+    $p = $BlueResolution -split 'x'; $blueDisp.Width = [int]$p[0]; $blueDisp.Height = [int]$p[1]
+}
+$redDisp.Fullscreen  = if ($PSBoundParameters.ContainsKey('RedFullscreen'))  { [bool]$RedFullscreen }  elseif ($Fullscreen) { $true } else { $dispSaved.Red.Fullscreen }
+$blueDisp.Fullscreen = if ($PSBoundParameters.ContainsKey('BlueFullscreen')) { [bool]$BlueFullscreen } elseif ($Fullscreen) { $true } else { $dispSaved.Blue.Fullscreen }
+if ($PSBoundParameters.ContainsKey('ListenerX'))  { $redDisp.X  = $ListenerX }
+if ($PSBoundParameters.ContainsKey('ListenerY'))  { $redDisp.Y  = $ListenerY }
+if ($PSBoundParameters.ContainsKey('ConnectorX')) { $blueDisp.X = $ConnectorX }
+if ($PSBoundParameters.ContainsKey('ConnectorY')) { $blueDisp.Y = $ConnectorY }
+
+# A configured monitor that is not attached right now: warn and fall back to
+# MAME's auto assignment instead of letting MAME die on a hidden console.
+$attached = @(Get-DisplayMonitors | ForEach-Object { $_.DeviceName })
+foreach ($pair in @(@('RED', $redDisp), @('BLUE', $blueDisp))) {
+    if (-not [string]::IsNullOrWhiteSpace($pair[1].Monitor) -and $attached -notcontains $pair[1].Monitor) {
+        Write-Host ("WARNING: {0} cabinet monitor {1} is not attached (found: {2}) - using auto." -f $pair[0], $pair[1].Monitor, ($attached -join ', ')) -ForegroundColor Yellow
+        $pair[1].Monitor = ''
+    }
+}
 
 # ---- Common preflight --------------------------------------------------------------
 $mameExe = Resolve-MameExe -Dir $MameDir
@@ -462,8 +767,9 @@ if ($Mode -ne 'Loopback' -and $Network -eq 'WiFi') {
     $mameEnv['NAMCOS23_PATCH_LINK_WAIT'] = [string]$wait
     Write-Host ("Network mode WiFi: passing NAMCOS23_PATCH_LINK_WAIT={0} (partner counter starts at {0}0; use WiFi mode on the other PC too)" -f $wait) -ForegroundColor DarkGray
 }
-$logFlag = if ($Log) { ' -log' } else { '' }
-$commonFlags = $(if ($Fullscreen) { '-nowindow -skip_gameinfo' } else { '-window -nomaximize -resolution 640x480 -prescale 1 -nokeepaspect -skip_gameinfo' }) + $logFlag
+
+$redFlags  = Get-MameDisplayFlags -Disp $redDisp
+$blueFlags = Get-MameDisplayFlags -Disp $blueDisp
 
 # ====================================================================================
 if ($Mode -eq 'Loopback') {
@@ -475,6 +781,10 @@ if ($Mode -eq 'Loopback') {
     }
     if (-not $SoloConnector) { Initialize-CabinetCfg -Dir $MameDir       -Identity red  -AutoYes:$Unattended }
     if (-not $SoloListener)  { Initialize-CabinetCfg -Dir $MameInstanceB -Identity blue -AutoYes:$Unattended }
+
+    if (-not $soloMode -and $redDisp.Fullscreen -and $blueDisp.Fullscreen -and ($redDisp.Monitor -eq $blueDisp.Monitor)) {
+        Write-Host 'WARNING: both cabinets are fullscreen on the same monitor - the borderless windows will overlap and only the top one is visible. Use the V menu to give each cabinet its own monitor.' -ForegroundColor Yellow
+    }
 
     if ($soloMode) {
         $DelaySeconds = 0
@@ -498,8 +808,24 @@ if ($Mode -eq 'Loopback') {
         }
     }
 
-    $listenerArgs  = "timecrs2 $commonFlags -comm_localport $GamePort -comm_remotehost `"`""
-    $connectorArgs = "timecrs2 $commonFlags -comm_remotehost 127.0.0.1 -comm_remoteport $GamePort -comm_localhost `"`" -rompath `"$rompath`""
+    # -background_input (opt-in): both windows keep receiving input while
+    # unfocused - for two-gun / two-mouse play on one PC.
+    $bgFlag = if ($BackgroundInput) { ' -background_input' } else { '' }
+
+    # Loopback "fullscreen" = BORDERLESS window at the monitor's resolution.
+    # Two native-fullscreen (-nowindow) MAME instances on one PC fight for the
+    # display - one takes precedence (user-found) - so fullscreen cabinets are
+    # launched WINDOWED at the monitor size and the frame is stripped after
+    # launch (Set-BorderlessWindow). LAN modes keep native fullscreen (one
+    # instance per PC, no conflict).
+    $redMon  = Get-CabinetMonitor -Disp $redDisp
+    $blueMon = Get-CabinetMonitor -Disp $blueDisp
+    $bdLogFlag = if ($Log) { ' -log' } else { '' }
+    $redLaunchFlags  = if ($redDisp.Fullscreen)  { ('-window -nomaximize -resolution {0}x{1} -skip_gameinfo' -f $redMon.Bounds.Width,  $redMon.Bounds.Height) + $bdLogFlag }  else { $redFlags }
+    $blueLaunchFlags = if ($blueDisp.Fullscreen) { ('-window -nomaximize -resolution {0}x{1} -skip_gameinfo' -f $blueMon.Bounds.Width, $blueMon.Bounds.Height) + $bdLogFlag } else { $blueFlags }
+
+    $listenerArgs  = "timecrs2 $redLaunchFlags$bgFlag -comm_localport $GamePort -comm_remotehost `"`""
+    $connectorArgs = "timecrs2 $blueLaunchFlags$bgFlag -comm_remotehost 127.0.0.1 -comm_remoteport $GamePort -comm_localhost `"`" -rompath `"$rompath`""
 
     $listenerProc = $null
     $connectorProc = $null
@@ -516,11 +842,34 @@ if ($Mode -eq 'Loopback') {
         Write-Host "Launching BLUE (peer 127.0.0.1:$GamePort)..." -ForegroundColor Cyan
         $connectorProc = Start-MameHidden -ExePath $mameExe -Arguments $connectorArgs -WorkingDirectory $MameInstanceB -EnvVars $mameEnv
     }
-    if (-not $NoPosition -and -not $Fullscreen) {
-        Write-Host "Positioning window(s)..." -ForegroundColor DarkCyan
-        if ($listenerProc)  { Wait-AndMoveWindow -Process $listenerProc  -X $ListenerX  -Y $ListenerY  -Label 'RED' }
-        if ($connectorProc) { Wait-AndMoveWindow -Process $connectorProc -X $ConnectorX -Y $ConnectorY -Label 'BLUE' }
-    } else {
+    # Borderless conversion happens even with -NoPosition (it IS the display
+    # mode); only plain windowed placement respects -NoPosition.
+    $positioned = $false
+    if ($listenerProc) {
+        if ($redDisp.Fullscreen) {
+            Write-Host ("Sizing RED borderless on {0}..." -f $redMon.DeviceName) -ForegroundColor DarkCyan
+            Set-BorderlessWindow -Process $listenerProc -X $redMon.Bounds.X -Y $redMon.Bounds.Y -W $redMon.Bounds.Width -H $redMon.Bounds.Height -Label 'RED'
+            $positioned = $true
+        } elseif (-not $NoPosition) {
+            $p = Get-CabinetWindowPos -Disp $redDisp -DefaultX $ListenerX -DefaultY $ListenerY -AutoUsesDefault $true
+            Write-Host ("Placing RED window ({0}x{1})..." -f $redDisp.Width, $redDisp.Height) -ForegroundColor DarkCyan
+            Set-CabinetWindow -Process $listenerProc -X $p.X -Y $p.Y -ClientW $redDisp.Width -ClientH $redDisp.Height -Label 'RED'
+            $positioned = $true
+        }
+    }
+    if ($connectorProc) {
+        if ($blueDisp.Fullscreen) {
+            Write-Host ("Sizing BLUE borderless on {0}..." -f $blueMon.DeviceName) -ForegroundColor DarkCyan
+            Set-BorderlessWindow -Process $connectorProc -X $blueMon.Bounds.X -Y $blueMon.Bounds.Y -W $blueMon.Bounds.Width -H $blueMon.Bounds.Height -Label 'BLUE'
+            $positioned = $true
+        } elseif (-not $NoPosition) {
+            $p = Get-CabinetWindowPos -Disp $blueDisp -DefaultX $ConnectorX -DefaultY $ConnectorY -AutoUsesDefault $true
+            Write-Host ("Placing BLUE window ({0}x{1})..." -f $blueDisp.Width, $blueDisp.Height) -ForegroundColor DarkCyan
+            Set-CabinetWindow -Process $connectorProc -X $p.X -Y $p.Y -ClientW $blueDisp.Width -ClientH $blueDisp.Height -Label 'BLUE'
+            $positioned = $true
+        }
+    }
+    if (-not $positioned) {
         Start-Sleep -Seconds 2      # give MAME a moment before the liveness peek below
     }
     $anyDead = $false
@@ -594,7 +943,7 @@ Write-Host ("Config (cfg\ nvram\ = {0} identity) : {1}" -f $(if ($Mode -eq 'LanR
 
 if ($Mode -eq 'LanRed') {
     # ----- RED (host/listener, waits) ----------------------------------------------
-    $listenerArgs = "timecrs2 $commonFlags -comm_localport $GamePort -comm_remotehost `"`" -rompath `"$rompath`""
+    $listenerArgs = "timecrs2 $redFlags -comm_localport $GamePort -comm_remotehost `"`" -rompath `"$rompath`""
 
     $srv = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $ControlPort)
     $srv.Start()
@@ -618,6 +967,12 @@ if ($Mode -eq 'LanRed') {
     $manual = ('& "{0}" timecrs2 -window -skip_gameinfo -log -comm_localport {1} -comm_remotehost "" -rompath "{2}"' -f $mameExe, $GamePort, $rompath)
     if (Test-MameAlive -Process $proc -Label 'RED' -ManualCmd $manual) {
         Write-Host ("RED up (PID {0}), bound on 0.0.0.0:{1}." -f $proc.Id, $GamePort) -ForegroundColor Green
+        if (-not $NoPosition -and -not $redDisp.Fullscreen) {
+            $pos = Get-CabinetWindowPos -Disp $redDisp -DefaultX $ListenerX -DefaultY $ListenerY -AutoUsesDefault $false
+            if ($pos -or $redDisp.Width -ne 640 -or $redDisp.Height -ne 480) {
+                Set-CabinetWindow -Process $proc -X $(if ($pos) { $pos.X } else { $null }) -Y $(if ($pos) { $pos.Y } else { $null }) -ClientW $redDisp.Width -ClientH $redDisp.Height -Label 'RED'
+            }
+        }
         $writer.WriteLine('LISTENER_UP')
     } else {
         $writer.WriteLine('LISTENER_FAILED')
@@ -631,7 +986,7 @@ if ($Mode -eq 'LanRed') {
 }
 else {
     # ----- BLUE (connector, dials RED) ----------------------------------------------
-    $connectorArgs = "timecrs2 $commonFlags -comm_remotehost $ListenerIP -comm_remoteport $GamePort -comm_localhost `"`" -rompath `"$rompath`""
+    $connectorArgs = "timecrs2 $blueFlags -comm_remotehost $ListenerIP -comm_remoteport $GamePort -comm_localhost `"`" -rompath `"$rompath`""
 
     Write-Host ''
     Write-Host ("BLUE: dialing RED {0}:{1} (retrying until it answers)..." -f $ListenerIP, $ControlPort) -ForegroundColor Magenta
@@ -685,6 +1040,12 @@ else {
     $manual = ('& "{0}" timecrs2 -window -skip_gameinfo -log -comm_remotehost {1} -comm_remoteport {2} -comm_localhost "" -rompath "{3}"' -f $mameExe, $ListenerIP, $GamePort, $rompath)
     if (Test-MameAlive -Process $proc -Label 'BLUE' -ManualCmd $manual) {
         Write-Host ("BLUE up (PID {0})." -f $proc.Id) -ForegroundColor Green
+        if (-not $NoPosition -and -not $blueDisp.Fullscreen) {
+            $pos = Get-CabinetWindowPos -Disp $blueDisp -DefaultX $ConnectorX -DefaultY $ConnectorY -AutoUsesDefault $false
+            if ($pos -or $blueDisp.Width -ne 640 -or $blueDisp.Height -ne 480) {
+                Set-CabinetWindow -Process $proc -X $(if ($pos) { $pos.X } else { $null }) -Y $(if ($pos) { $pos.Y } else { $null }) -ClientW $blueDisp.Width -ClientH $blueDisp.Height -Label 'BLUE'
+            }
+        }
     } else {
         $client.Close()
         Exit-WithPause 1

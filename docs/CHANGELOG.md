@@ -6,6 +6,32 @@ language.
 This is a fan preservation project. It is not affiliated with or
 endorsed by Namco or Bandai Namco.
 
+## v0.3 — 2026-07-20 — Per-cabinet display settings
+
+- **Display settings per cabinet.** New `V` option in the launcher menu:
+  choose which monitor each cabinet uses, its window size and position,
+  or fullscreen — separately for RED and BLUE. Settings are shown before
+  editing, saved for every later launch, and `R` resets them to the
+  defaults (with a confirmation). Matching command-line options
+  (`-RedMonitor`, `-BlueFullscreen`, `-RedResolution`, ...) cover
+  headless and front-end use.
+- **Dual fullscreen on one PC.** Both cabinets can run fullscreen on
+  separate monitors. The launcher uses borderless windows for this —
+  testing showed two true-fullscreen games on one PC fight over the
+  display, while borderless looks identical and coexists cleanly.
+  Network play keeps real fullscreen (one instance per PC).
+- **Two guns, one PC.** The opt-in `-BackgroundInput` option keeps both
+  game windows receiving input at the same time — for two lightgun or
+  two mouse players on a single PC.
+- **Placement fixes.** Window positions are relative to the chosen
+  monitor, and configured window sizes are applied exactly.
+- **New docs.** ADVANCED.md gains display-settings and per-cabinet
+  settings guides (how to give each cabinet its own controls and
+  calibration).
+
+The game build (`mametc2.exe`) is unchanged — launcher and
+documentation only.
+
 ## v0.2 — 2026-07-16 — One launcher, zero setup
 
 - **One script for everything.** `launch_tc2.ps1` replaces the two

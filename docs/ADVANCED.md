@@ -65,6 +65,59 @@ Useful extras: `-KillExisting` closes any stuck game windows first;
 `-NoPosition` skips the window placement; `-Log` writes MAME's `error.log`
 in each cabinet folder (off by default).
 
+## Display settings (monitors, window size, fullscreen)
+
+Press `V` in the launcher menu to configure the display **per cabinet** —
+RED and BLUE independently. It first shows the detected monitors and both
+cabinets' current configuration, then walks through each cabinet:
+
+- **Monitor** — which physical display the cabinet uses (pick a number from
+  the list, or `a` for automatic).
+- **Fullscreen** — y/n per cabinet.
+- **Window size** — the game picture size (e.g. `1920x1080`) when windowed.
+- **Window position** — `x,y` **on the chosen monitor**, or `a` for the
+  automatic side-by-side layout.
+
+Settings are saved and reused on every launch; press `R` in the menu to
+reset them to the defaults (windowed 640x480, side by side) — it asks for
+confirmation first. Enter on any prompt keeps the current value.
+
+Worth knowing:
+
+- **Two fullscreen cabinets on one PC use borderless windows.** Two true
+  fullscreen games on one PC fight over the display (found in testing), so
+  in Local Link Play the launcher runs "fullscreen" cabinets as borderless
+  windows sized to the monitor — visually identical, no conflict. Network
+  play uses MAME's native fullscreen (one instance per PC).
+- **Two players on one PC:** normally only the focused window receives
+  input. The opt-in `-BackgroundInput` option keeps BOTH windows live at
+  once — right for two lightguns or two mice, wrong for a shared keyboard
+  (it would drive both cabinets simultaneously).
+- The launcher sizes and places the windows itself (MAME alone treats a
+  windowed `-resolution` only as a maximum and has no position option).
+
+## Per-cabinet settings (controls, calibration)
+
+Each cabinet folder keeps its own settings. Anything you change in the MAME
+Tab menu **while an instance is running** is saved to THAT instance's
+folder when it exits: `cfg\` holds the input mappings, DIP switches, and
+machine configuration; `nvram\` holds the game's own service-menu data,
+including gun calibration.
+
+To give cabinet A and cabinet B different settings (say, different control
+mappings for player 1 and player 2 on one PC), configure one cabinet at a
+time:
+
+1. Start ONLY the red cabinet: `.\launch_tc2.ps1 -Mode Loopback -SoloListener`
+2. Press Tab, open **Input Settings -> Input (this Machine)**, map the
+   controls, then close the game.
+3. Start ONLY the blue cabinet: `.\launch_tc2.ps1 -Mode Loopback -SoloConnector`
+   and repeat.
+
+From then on every linked launch uses each cabinet's own mappings. The same
+approach works for anything per-cabinet: volume, video options, service-menu
+settings, gun calibration.
+
 ## Manual setup without the scripts
 
 ### One PC
@@ -155,6 +208,13 @@ powershell -ExecutionPolicy Bypass -File launch_tc2.ps1 -Mode LanBlue -ListenerI
   `-ConnectorIP`, `-Network Ethernet|WiFi`, `-DelaySeconds`, `-StaggerMs`,
   `-WorkDir <folder>` (use a specific cabinet folder), `-Log` (write MAME's
   error.log, off by default).
+- Display parameters (override the saved `V`-menu settings for that run):
+  `-RedMonitor 1` / `-BlueMonitor 2` (a number, `DISPLAY2`, or
+  `\\.\DISPLAY2`), `-RedResolution 800x600` / `-BlueResolution`,
+  `-RedFullscreen` / `-BlueFullscreen` (per cabinet; plain `-Fullscreen` =
+  both), `-ListenerX/-ListenerY` / `-ConnectorX/-ConnectorY` (window
+  position, relative to the cabinet's monitor), and `-BackgroundInput`
+  (both loopback windows keep receiving input - two-gun/two-mouse setups).
 - With `-Unattended`, first-run cabinet seeding still happens, and any
   identity/DIP fix that would normally prompt is applied automatically.
 - Exit code is `0` on a successful launch and `1` on any failure, so a

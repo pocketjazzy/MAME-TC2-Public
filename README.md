@@ -48,7 +48,7 @@ Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the
 5. When prompted with `Delay between RED and BLUE launch in seconds (Enter = 0.85):`, press Enter to accept the default setting.
 6. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
-   **NOTE:** If you wish to change the window sizes and locations to a new default, you can edit the launcher script.
+   **NOTE:** Window sizes, positions, monitors, and fullscreen are configured per cabinet from the launcher's `V` menu (saved for next time; `R` resets to defaults). See [docs/ADVANCED.md](docs/ADVANCED.md).
 
 
 ### Two-PC link play:
@@ -77,7 +77,9 @@ Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the
 2. The launcher normally guarantees the cabinet settings (each side gets its own identity and the Link Play DIP switch ON, created on first run). If you have edited things manually via the MAME Tab menu, the launcher will detect a wrong side/color or a disabled DIP at launch and offer to fix it — answer `Y`.
 3. If a MAME instance fails to start, the launcher window now stays open and shows the error, along with a command you can run to see MAME's own error message. The usual causes are a missing `roms\timecrs2.zip` or an outdated graphics driver.
 
-For more background — how cabinet identity works (one program, two folders), why the staggered start matters, WiFi mode, headless/front-end use, and manual setup without the script — see **[docs/ADVANCED.md](docs/ADVANCED.md)**.
+For more background — how cabinet identity works (one program, two folders), why the staggered start matters, WiFi mode, display settings, per-cabinet controls, headless/front-end use, and manual setup without the script — see **[docs/ADVANCED.md](docs/ADVANCED.md)**.
+
+Found a bug or want a feature? Open one on the **[Issues](https://github.com/pocketjazzy/MAME-TC2-Public/issues)** page.
 
 ---
 
@@ -88,7 +90,8 @@ brief: the two-cabinet link works (same PC or two PCs), there is an
 in-game **Link Play Config** menu for network settings, the link-play
 DIP switch is properly labeled now that it has been identified, and a
 single all-in-one launcher (`launch_tc2.ps1`) sets the cabinets up
-automatically on first run and handles the launch timing.
+automatically on first run, handles the launch timing, and configures
+per-cabinet displays (monitor, window size/position, fullscreen).
 
 ---
 
