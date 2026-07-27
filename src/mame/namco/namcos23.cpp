@@ -1348,7 +1348,7 @@ namespace
 static s32 u32_to_s24(u32 v);
 static s32 u32_to_s10(u32 v);
 
-// P067 EXPERIMENT (branch patch/defaults-on): the ADOPTED patch recipe becomes
+// P067 (branch patch/defaults-on): the ADOPTED patch recipe becomes
 // the BUILT-IN DEFAULT - a plain launch (no env vars at all) runs the full
 // adopted link-play recipe.  Uniform resolution for every ADOPTED patch env
 // var (the same helper is duplicated in namco_c139.cpp for the device-side
@@ -1361,10 +1361,10 @@ static s32 u32_to_s10(u32 v);
 //                           the banner reports source "(env=<value>)"
 // Returns the EFFECTIVE value string (defval or the env value), or nullptr
 // when killed via "0".  from_env reports where the value came from.
-// NON-adopted vars (LINK_WAIT, TCP_NODELAY, NEWEST_WINS, HB_PHASE_AWARE,
-// TX_COMPLETE_IRQ, CORR_SMOOTH+knobs, every retired patch, and ALL
-// NAMCOS23_TRACE_*) keep the old "armed only when set" idiom - do NOT route
-// them through this helper.  MODEL PROVENANCE: Fable 5.
+// NON-adopted vars (LINK_WAIT, TCP_NODELAY) keep the old "armed only when
+// set" idiom - do NOT route them through this helper.  (Every retired patch
+// and all NAMCOS23_TRACE_* diagnostics that also used that idiom were
+// removed in P072.)  MODEL PROVENANCE: Fable 5.
 static char const *patch_env_or_default(char const *name, char const *defval, bool &from_env)
 {
 	char const *const env = std::getenv(name);
@@ -2006,195 +2006,52 @@ protected:
 
 	bool m_subcpu_running;
 
-	// P001 EXPERIMENT (branch patch/keepalive-floor, cherry-picked onto
-	// patch/continuous-arm): env-gated in-game link keepalive floor, read
+	// P001 (branch patch/keepalive-floor): env-gated in-game link
+	// keepalive floor, read
 	// once in machine_start(), applied in vblank().  P008 enhancement: the
 	// env var's numeric value is the floor value (plain "1" = exact P001
 	// semantics; "2" floors at 2 so the in-frame service decrement cannot
-	// reach 0 and fire the COM-fallback).  Experiment branch only - never
-	// merge to milestone.
+	// reach 0 and fire the COM-fallback).
 	bool m_patch_keepalive_floor;
 	u32 m_keepalive_floor_value;
 
-	// P002 EXPERIMENT (branch patch/vblank-lockstep): env-gated 1/s status
-	// tap of the ROM's frame-drift word 0x802F3504 and keepalive 0x802F3FD8,
-	// plus the lockstep token/stall counters from the C139 device.  Gate read
-	// once in machine_start(), sampled in vblank().  The barrier itself lives
-	// in namco_c139.  Experiment branch only - never merge to milestone.
-	bool m_patch_vblank_lockstep;
-	u16 m_lockstep_tap_max_drift;
-	u32 m_lockstep_tap_min_keepalive;
-	u32 m_lockstep_tap_mode2_samples;
+	// (The P002 driver-side VBLANK_LOCKSTEP 1/s status tap members lived here
+	// until P072 phase C; the barrier itself lives in namco_c139.)
 
-	// P003 EXPERIMENT (branch patch/round-start-arm): env-gated MAME-side
-	// re-arm of the partner record's ingest bit on each keepalive refill
-	// edge, plus read-only observability of the record flag words.  Gate
-	// read once in machine_start(), applied in vblank().  Independent of
-	// the P002 gate.  Experiment branch only - never merge to milestone.
-	bool m_patch_round_start_arm;
-	bool m_rsa_have_prev;
-	u32 m_rsa_prev_keepalive;
-	u32 m_rsa_prev_rec0;
-	u32 m_rsa_prev_rec1;
-	u32 m_rsa_low24_changes;
+	// Retained P014/P015/P016 ingest-adoption knowledge (the P015 ADOPT trace
+	// and the P016 OP70 accept/reject tap were removed in P072; addresses
+	// verified from gold/full.txt, 2026-06-16-p015/p016 agent-logs):
+	// - partner/team record family: base 0x802F4060, stride 0x474; +0x370
+	//   flags word rec0=0x802F43D0 rec1=0x802F4844.  The op-0x17 batch
+	//   consumer 0x800AC0E8 writes the SAME record family (resolved at runtime
+	//   via 0x8010FE84(id), not a fixed address) at +0xA8/+0xAC/+0xB0 (s32
+	//   position X/Y/Z) and +0xE0 (hw coord) => rec0 pos words
+	//   0x802F4468/6C/70, rec1 0x802F48DC/E0/E4 (= base+0xA8..).
+	// - actor-spawn array 0x802F4DB0, guard 0x802F4DC8, stride 0x2B8; element
+	//   +0x6C active (slot 0 = 0x802F4E1C), +0x1F4 coord0 (0x802F4FA4).
+	// - bit-0x2000 ARM SITE: the ONLY ROM writer of bit 0x2000 into +0x370 is
+	//   op-55 RX -> 0x80013D44 sw $a2,0x370 (0x80013E10), copying the PEER's
+	//   24-bit wire flags verbatim; round-start sets only 0x8000/0x8002, the
+	//   dispatcher never sets 0x2000 - so bit 0x2000 is on iff the peer sends
+	//   an op-55 frame carrying it.
+	// - op-70 cutscene-timer adoption (RX handler 0x80016E28 via op table
+	//   0x8023F4D0[0x70]=0x800B2544) is DOUBLE-gated: LOCAL record +0x370 bit
+	//   0x2000 (read 0x80016E50, beqz 0x80016E58) AND gp+0x7074 == 2 (bne
+	//   0x80016E64); on accept the ROM stores the value at gp+0x7054
+	//   (0x80016E80).  gp+0x7074==2 derivation 0x80016BCC: partner +0x370 &
+	//   0x6000 == 0x6000 (read 0x80016BB4).  gp = 0x802C7820: gp+0x7054 =
+	//   0x802CE874, gp+0x7074 = 0x802CE894, localidx gp+0x7608 = 0x802CEE28.
+	// - P014 proved the 718B >255hw op-0x17/0x71/0xfe actor/scene batch
+	//   reassembles, crosses the link and DMA-ingests on blue (landing word
+	//   0x01c6 = C139 RX RAM word 0x11c6); the P015 run localized the 0x118003
+	//   cutscene freeze to data ARRIVING but never being ADOPTED into the
+	//   actor/render path (bit 0x2000 dark on both cabs).
 
-	// P008 EXPERIMENT (branch patch/continuous-arm): env-gated CONTINUOUS
-	// MAME-side re-arm of the partner record's ingest bit - every vblank
-	// while mode == 2 and the keepalive is alive, not just on refill edges
-	// (the P003 edge trigger can never fire alongside the P001 floor, and
-	// its single firing lost the within-frame COM-fallback race).  Gate read
-	// once in machine_start(), applied in vblank() AFTER the P001 floor
-	// write.  Independent of the P001/P002/P003 gates.  Experiment branch
-	// only - never merge to milestone.
-	bool m_patch_continuous_arm;
-	u32 m_ca_rearm_count;
-
-	// P009 EXPERIMENT (branch patch/qual-trace): READ-ONLY qualification
-	// event tap - detects, at vblank granularity, the ROM-side events that
-	// mark a delivered RX frame as QUALIFYING (drift-word reset / remote-seq
-	// mirror change via 0x8000B8F0) or FAILED (checksum counter gp+0x75C8
-	// increment), plus the RX ring head/tail so deliveries can be tracked
-	// stage by stage.  Gate read once in machine_start(), sampled in
-	// vblank().  Independent of all patch gates.  Experiment branch only -
-	// never merge to milestone.
-	bool m_trace_qual;
-	bool m_qt_have_prev;
-	u16 m_qt_prev_drift;
-	u16 m_qt_prev_succ;
-	u16 m_qt_prev_rseq;
-	u16 m_qt_prev_head;
-	u16 m_qt_prev_tail;
-	u32 m_qt_win_quals;
-	u32 m_qt_win_chkfails;
-	u32 m_qt_win_enq;
-	u32 m_qt_win_drain;
-
-	// P015 EXPERIMENT (branch patch/render-gate-actor-spawn-trace): READ-ONLY
-	// adoption / render-gate / cutscene-timer trace.  P014 proved the >255hw
-	// bulk frame reassembles, crosses the link, and BLUE DMA-ingests the 718B
-	// op-0x17/0x71/0xfe actor/scene batch (its cutscene advances on delivery)
-	// but then FREEZES at shot 0x118003: blue renders the environment but never
-	// the characters, bit 0x2000 ("render gate" / remote-controlled, aka bit13)
-	// never sets, and the 0x0080d0 render-window low-24 signature is absent on
-	// both cabs.  So the data ARRIVES but is not ADOPTED into the actor/render
-	// path.  This block instruments enough to decide between (a) wrong-slot
-	// ingest, (b) render-gate gated on a ready-bit that never sets, (c) a
-	// missing 2nd link direction.  Every tap is READ-ONLY (no write to game RAM
-	// or device state).  Gate read once in machine_start(), sampled in vblank().
-	// Independent of all other gates.  Experiment branch only - never merge to
-	// milestone.
-	//
-	// Addresses (verified from gold/full.txt, see 2026-06-16-p015 agent-log):
-	//  - partner/team record family: base 0x802F4060, stride 0x474; +0x370 flags
-	//    word rec0=0x802F43D0 rec1=0x802F4844.  op-0x17 batch consumer 0x800AC0E8
-	//    writes the SAME record family (record base 0x802F43C0/0x802F4834) at
-	//    sub-fields +0xA8/+0xAC/+0xB0 (s32 position X/Y/Z) and +0xE0 (hw coord);
-	//    => rec0 pos words 0x802F4468/6C/70, rec1 0x802F48DC/E0/E4 (= base+0xA8..).
-	//  - actor-spawn array 0x802F4DB0, guard 0x802F4DC8, stride 0x2B8; element
-	//    +0x6C active, +0x1F4 coord0.  Slot 0 active word = 0x802F4DB0+0x6C.
-	//  - bit-0x2000 ARM SITE: ONLY op-55 RX -> 0x80013D44 sw $a2,0x370 (0x80013E10)
-	//    copies the peer's 24-bit wire flags (incl 0x2000) verbatim; round-start
-	//    sets only 0x8000/0x8002, dispatcher never sets 0x2000.  So bit 0x2000 is
-	//    on iff the PEER sends an op-55 frame carrying it.  We cannot see the wire
-	//    flags from here, but we observe whether bit 0x2000 ever appears (and the
-	//    low-24 0x0080d0 render composite) on either record around the freeze.
-	//  - gp+0x7074==2 derivation 0x80016BCC: partner +0x370 & 0x6000 == 0x6000
-	//    (read 0x80016BB4); op-70 cutscene-timer adoption gate 0x80016E58 (local
-	//    +0x370 bit 0x2000) / 0x80016E64 (gp+0x7074==2) / store gp+0x7054 0x80016E80.
-	//  - gp = 0x802C7820: gp+0x7054 (cutscene timer) = 0x802CE874, gp+0x7074
-	//    (==2 full-link gate) = 0x802CE894.  localidx gp+0x7608 = 0x802CEE28.
-	bool m_trace_adopt;
-	bool m_adopt_have_prev;
-	u32 m_adopt_prev_rec0;          // rec0 +0x370 last vblank
-	u32 m_adopt_prev_rec1;          // rec1 +0x370 last vblank
-	u32 m_adopt_prev_t7054;         // gp+0x7054 cutscene timer last vblank
-	u32 m_adopt_prev_t7074;         // gp+0x7074 ==2 gate last vblank
-	u32 m_adopt_prev_a0_active;     // actor-array slot 0 +0x6C (spawn landing)
-	u32 m_adopt_prev_word01c6;      // link-chip RX RAM at the 0x01c6 ingest landing
-	u32 m_adopt_max_t7054;          // 1/s window max cutscene timer
-	u32 m_adopt_t7054_advances;     // 1/s window count of gp+0x7054 increases
-	u32 m_adopt_p_pos_changes;      // 1/s window count of partner +0x370 low-24 changes (op02 ingest)
-	u32 m_adopt_actor_changes;      // 1/s window count of actor slot 0 +0x6C changes (spawn ingest)
-	u32 m_adopt_word01c6_changes;   // 1/s window count of link-RAM 0x01c6 changes (bulk landing)
-
-	// P016 PHASE A EXPERIMENT (branch patch/op70-cutscene-timer-arm): READ-ONLY
-	// op-70 cutscene-timer accept/reject proof.  P015 found gp+0x7054 = 0 the
-	// entire run (op-70 timer channel dead) because op-70 adoption (RX handler
-	// 0x80016E28, reached via op-table 0x8023F4D0[0x70]=0x800B2544) is DOUBLE-
-	// gated on (LOCAL +0x370 bit 0x2000) AND (gp+0x7074 == 2), neither set on the
-	// linked rig.  This tap proves, with evidence, whether op-70 frames ARRIVE at
-	// blue during its 0x118002 cutscene freeze and are REJECTED at that gate, and
-	// pins EXACTLY which predicate is false.  We watch gp+0x7054 for a change
-	// (= the ROM store at 0x80016E80 fired = ACCEPT) and, every vblank + on every
-	// op-70-relevant edge, sample the two gate operands the ROM checks:
-	//   - LOCAL record +0x370 & 0x2000  (0x80016E50 reads 0x802F43D0 + localidx
-	//     *0x474; localidx 0 -> rec0 0x802F43D0, 1 -> rec1 0x802F4844 - the cab's
-	//     OWN record, NOT the partner) - gate operand 1 (0x80016E58 beqz)
-	//   - gp+0x7074 == 2 (0x802CE894) - gate operand 2 (0x80016E64 bne)
-	// Pair the DEVICE-side OP70: rx (arrival + peer value) with this driver-side
-	// OP70: gate / accept / reject by t=.  Accept = gp+0x7054 moved toward the
-	// peer value reported by the device line; reject = gp+0x7054 unchanged, with
-	// the failing predicate named.  All reads READ-ONLY (m_mainram, no writes).
-	// Addresses verified from full.txt (see 2026-06-16-p016 agent-log).
-	// Experiment branch only - never merge to milestone.
-	bool m_trace_op70;
-	bool m_op70_have_prev;
-	u32 m_op70_prev_t7054;          // gp+0x7054 last vblank (accept = it moved)
-	u32 m_op70_t7054_changes;       // 1/s window count of gp+0x7054 changes (op-70 accepts)
-	u32 m_op70_gate_local2000_set;  // 1/s window count of vblanks with LOCAL +0x370 bit 0x2000 set
-	u32 m_op70_gate_7074eq2;        // 1/s window count of vblanks with gp+0x7074 == 2
-
-	// P019 STEP 1 EXPERIMENT (branch patch/op70-linked-gate-arm, off
-	// patch/op70-real-detector): READ-ONLY "linkbits" trace, env-gated by
-	// NAMCOS23_TRACE_LINKBITS (inert when unset).  P018 proved (A) source-dead:
-	// the op-70 emitter (0x80016DCC) AND the RX adopter (0x80016E64) are both
-	// gated on gp+0x7074==2, which becomes 2 ONLY when the PARTNER record +0x370
-	// has BOTH 0x6000 bits set (mask check 0x80016BB4-BCC reads
-	// 0x802F43D0 + (1-localidx)*0x474 = the partner record), and partner6000=0
-	// all run on both cabs.  STEP 1 localizes WHERE that 0x6000 chain breaks:
-	//   (X) the LOCAL cab never even SETS its own +0x370 0x6000 bits, or
-	//   (Y) the local 0x6000 bits are set but not on the cross-cab TX payload, or
-	//   (Z) they are on the wire but the peer's op55 ingest doesn't land them.
-	// This driver-side half answers (X) and pins the gate: it samples the LOCAL
-	// record rec0 +0x370 (0x802F43D0) and the PARTNER record rec1 +0x370
-	// (0x802F4844) 0x6000 bits every vblank, logs transitions, and emits a 1/s
-	// LINKBITS: status pairing local0x6000 / partner0x6000 / gp+0x7074 and the
-	// gate's WOULD-BE value (2 iff partner 0x6000 both set, else 1) so the whole
-	// local-set -> TX -> ingest -> gate chain is one grep-able line.  The
-	// device-side half (namco_c139 LINKBITS: txflags / rxflags) decodes the op55
-	// 24-bit wire flags so (Y)/(Z) can be read off the wire.
-	//
-	// ROM provenance (full.txt, gp=0x802C7820):
-	//  - LOCAL +0x370 bit 0x4000 set/clear: 0x80016DB8-DC0 (`|= 0x4000` when
-	//    gp+0x705C(0x802CE87C)==0, else `&= ~0x4000`), $s0 = local record.
-	//  - LOCAL +0x370 bit 0x2000 set: 0x800166B0-BC (`|= 0x2000` & `&= ~0x4000`),
-	//    role-gated at 0x80016698-AC ((+0x370>>31 xor 1) == (gp+0x7608 != 0)).
-	//  - PARTNER +0x370 written verbatim by op55 RX: 0x80013D44 -> sw 0x80013E10
-	//    `$a2 = wire24flags | 0x40000000 | 0x80000000` (0x800B0718-38), record
-	//    $t1 = 0x802F4060 + 1*0x474 = rec1 0x802F4844 (call $a0=1 at 0x800B0730);
-	//    the partner 0x6000 bits therefore come straight from the op55 24-bit
-	//    wire flags ($s2, parsed 0x800B05EC-0604 = operand bytes 4/5/6 = cell
-	//    stream cells[op55+5..+7]); 0x6000 lives in cell[op55+6] & 0x60.
-	//  - GATE: gp+0x7074(0x802CE894) = 2 iff partner +0x370 & 0x6000 == 0x6000
-	//    (0x80016BB4-BCC, partner = 0x802F43D0 + (1-gp+0x7608)*0x474).
-	// All reads READ-ONLY (m_mainram, no writes).  Experiment branch only -
-	// never merge to milestone.
-	bool m_trace_linkbits;
-	bool m_lb_have_prev;
-	u32 m_lb_prev_local;            // LOCAL rec +0x370 last vblank
-	u32 m_lb_prev_partner;          // PARTNER rec +0x370 last vblank
-	u32 m_lb_prev_t7074;            // gp+0x7074 last vblank
-	u32 m_lb_prev_t705c;            // gp+0x705C (local-0x4000 gate predicate) last vblank
-	u32 m_lb_local6000_set;         // 1/s window count of vblanks with LOCAL +0x370 0x6000 == 0x6000
-	u32 m_lb_partner6000_set;       // 1/s window count of vblanks with PARTNER +0x370 0x6000 == 0x6000
-
-	// P025 EXPERIMENT (branch patch/playclock-humangate-trace, off
-	// patch/op55-carrier-repeat): READ-ONLY trace of the op6F PLAY-CLOCK and the
-	// bit-0x0004 CO-OP/HUMAN gate, env-gated by NAMCOS23_TRACE_PLAYCLOCK (inert
-	// when unset).  The Fable-5 ROM-claims review retired the 0x6000/op-70 line
-	// (death/continue subsystem) and named the REAL linked-play surface; this
-	// trace instruments its two leads WITHOUT any RAM write.
-	//
+	// Retained P025 op6F PLAY-CLOCK + bit-0x0004 CO-OP/HUMAN-gate knowledge
+	// (the P025 PLAYCLOCK trace was removed in P072).  The Fable-5 ROM-claims
+	// review retired the 0x6000/op-70 line (death/continue subsystem) and
+	// named this the REAL linked-play surface; the bit-0x0004 human-tags
+	// vector is still an OPEN lead.
 	// ROM provenance (full.txt, this pass; gp=0x802C7820):
 	// (1) op6F PLAY-CLOCK.  Gate-4 table 0x8023F4D0[0x6F] (word @0x8023F68C) =
 	//     RX handler 0x800B2448: parses TWO sign-extended 24-bit BE operands and,
@@ -2249,27 +2106,10 @@ protected:
 	//     handler (the only paired site); whole-word discontinuity = re-init;
 	//     single-record low24-only flip = op02 mirror (correlate with the peer
 	//     log) or 0x80013C54.
-	// All reads READ-ONLY (m_mainram + device counters).  Experiment branch only
-	// - never merge to milestone.
-	bool m_trace_playclock;
-	bool m_pc_have_prev;
-	u32 m_pc_prev_rec0_390;         // rec0 +0x390 (0x802F43F0) last vblank
-	u32 m_pc_prev_rec0_394;         // rec0 +0x394 (0x802F43F4) last vblank
-	u32 m_pc_prev_rec1_390;         // rec1 +0x390 (0x802F4864) last vblank
-	u32 m_pc_prev_rec1_394;         // rec1 +0x394 (0x802F4868) last vblank
-	u32 m_pc_prev_rec0_flags;       // rec0 +0x370 last vblank (bit04 edge detect)
-	u32 m_pc_prev_rec1_flags;       // rec1 +0x370 last vblank (bit04 edge detect)
-	u8  m_pc_prev_role3ffc;         // role/flags byte 0x802F3FFC last vblank (bit7 = op6F master)
-	bool m_pc_prev_rec0_ticking;    // rec0 +0x390 advanced (+1/+2) last vblank (tick-run state)
-	u32 m_pc_ticks390;              // 1/s window count of vblanks where rec0 +0x390 advanced
-	u32 m_pc_bit04_both;            // 1/s window count of vblanks with BOTH records' bit 0x0004 set
-	u32 m_pc_prev_op6f_tx;          // device op6f-tx running count at last 1/s status (delta basis)
-	u32 m_pc_prev_op6f_rx;          // device op6f-rx running count at last 1/s status (delta basis)
 
-	// P026 PART 2 EXPERIMENT (branch patch/reasm-chunk-passthru): READ-ONLY
-	// phase9-VALIDATOR trace, env-gated by NAMCOS23_TRACE_PHASE9VAL (inert when
-	// unset).  STEP-1 STATIC RESULT (full.txt, this pass; gp=0x802C7820) - the
-	// semantics the project flip-flopped on, now nailed:
+	// Retained P026 phase-9 validator knowledge (the PHASE9VAL trace was
+	// removed in P072; STEP-1 STATIC from full.txt, gp=0x802C7820 - the
+	// semantics the project flip-flopped on, nailed):
 	//
 	//   gp+0x75C8 (0x802CEDE8, the phase-9d tap's "succ") is a CHECKSUM-FAIL
 	//   COUNTER, not a success counter.  Its ONLY writers: the increment at
@@ -2311,32 +2151,13 @@ protected:
 	//   succ=0000 all run" is the HEALTHY signature (no chkfail, last drain
 	//   validated).  The arms-outstretched barrier's release must therefore be
 	//   carried INSIDE validated traffic (a gate-4 VM op / op55 flag / record
-	//   field) one layer up - which is what this tap makes visible: it logs
-	//   the dispatch buffer head (the validator's INPUT bytes, rewritten per
-	//   drained slot BEFORE the sum test, so failed drains show too) so a run
-	//   with blue's session alive names exactly which ops flow - and which
-	//   never arrive - while the barrier holds.
-	//
-	// Events (all change-driven, m_mainram reads only, no RAM writes):
-	// 75BC/75C8 transitions, dispatch-buffer-head change (= a drain happened;
-	// chkfail delta in the same vblank attributes pass/fail), + 1/s status.
-	// Multiple drains within one vblank collapse into one event line
-	// (documented limitation, same as the QUAL tap).
-	bool m_trace_phase9val;
-	bool m_p9v_have_prev;
-	u16 m_p9v_prev_link;            // gp+0x75BC last vblank
-	u16 m_p9v_prev_chkfail;         // gp+0x75C8 last vblank
-	u32 m_p9v_prev_buf0;            // dispatch buffer 0x802F3510 word 0 last vblank
-	u32 m_p9v_prev_buf1;            // dispatch buffer 0x802F3514 word 1 last vblank
-	u32 m_p9v_win_drains;           // 1/s window count of buffer-head changes (drains observed)
-	u32 m_p9v_win_chkfails;         // 1/s window sum of 75C8 deltas
+	//   field) one layer up.
 
-	// P033 EXPERIMENT (branch patch/compose-gate-trace, off patch/announce-latch):
-	// READ-ONLY trace of the ROM's boundary BULK-COMPOSE scheduler and its gates,
-	// env-gated by NAMCOS23_TRACE_COMPOSEGATE (inert when unset).  P031 proved the
-	// residual late area-skip is compose-ABSENT (zero bulk announces on EITHER cab
-	// for one boundary, in a clean-health window) - upstream of the C139 device.
-	// STEP-1 STATIC (full.txt, this pass; gp=0x802C7820) located the scheduler:
+	// Retained P033 bulk-compose scheduler knowledge (the COMPOSEGATE trace
+	// was removed in P072; P031 proved the residual late area-skip is
+	// compose-ABSENT - zero bulk announces on EITHER cab for one boundary,
+	// in a clean-health window - i.e. upstream of the C139 device.  STEP-1
+	// STATIC from full.txt, gp=0x802C7820:
 	//
 	//   The ONLY op4B/4C bulk-snapshot TX emitter is 0x800AF84C (opcode 0x4C +
 	//   0x158-byte entity copy + 0x18-byte ext block when flags&0x0E00, else
@@ -2385,32 +2206,12 @@ protected:
 	//   marker = rec0/rec1 +0x370 (0x802F43D0/0x802F4844) low bits 0x40
 	//   (marker, set @0x800131E8) / 0x20 (engaged, set @0x80013214/44, clear
 	//   @0x8001324C) driven by the segment-phase machine [candidate (b)].
-	// All reads READ-ONLY (m_mainram only, no writes to RAM/ROM/game state).
-	// Experiment branch only - never merge to milestone.
-	bool m_trace_composegate;
-	bool m_cg_have_prev;
-	u32 m_cg_prev_rec0_370;         // rec0 +0x370 (0x802F43D0) last vblank
-	u32 m_cg_prev_rec1_370;         // rec1 +0x370 (0x802F4844) last vblank
-	u32 m_cg_prev_screen;           // gp+0x756C screen state last vblank
-	u32 m_cg_prev_phase;            // gp+0x7024 phase index last vblank
-	u32 m_cg_prev_done;             // gp+0x7014 phase-machine done/abort latch last vblank
-	s16 m_cg_prev_reqid;            // gp+0x7020 snapshot request id last vblank
-	u16 m_cg_prev_len;              // 0x802F3910 composed VM frame length last vblank
-	u32 m_cg_prev_mode;             // 0x802F3FD0 mode last vblank
-	u32 m_cg_prev_ka;               // 0x802F3FD8 keepalive last vblank
-	u8  m_cg_prev_role;             // role byte 0x802F3FFC last vblank
-	u16 m_cg_prev_bypass;           // gp+0x7036 transfer-bypass selector last vblank
-	u32 m_cg_win_bulkframes;        // 1/s window count of frames with len3910 > 0xFF
-	u32 m_cg_win_reqframes;         // 1/s window count of frames with request id != -1
-	u32 m_cg_win_phase1;            // 1/s window count of serving-capable frames (screen 0x14/0x16, phase 1, done==0)
-	u16 m_cg_win_maxlen;            // 1/s window max of len3910
 
-	// P034 EXPERIMENT (branch patch/roundend-trace, off patch/compose-gate-trace):
-	// READ-ONLY trace of the ROUND-END trigger chain + join-armer preconditions,
-	// env-gated by NAMCOS23_TRACE_ROUNDEND (inert when unset).  P033's run proved
-	// the transfer screens / link phase machine NEVER executed (304 s, both cabs)
-	// because red's round machine never left state 0 while blue walked 0->1->4.
-	// STEP-1 STATIC (full.txt, this pass; gp=0x802C7820) named the whole chain:
+	// Retained P034 round-end trigger-chain knowledge (the ROUNDEND trace was
+	// removed in P072; P033's run proved the transfer screens / link phase
+	// machine NEVER executed in 304 s on both cabs because red's round
+	// machine never left state 0 while blue walked 0->1->4.  STEP-1 STATIC
+	// from full.txt, gp=0x802C7820 - the whole chain:
 	//
 	//   round703c(gp+0x703C) 0->1 writer = 0x80017074 in the STATE-0 handler
 	//   0x80017024 (dispatch table 0x8022A78C confirmed: [0]=0x80017024,
@@ -2472,235 +2273,55 @@ protected:
 	//   256 frames) && keepalive 0x802F3FD8 > 0 && role bit7; payload = local
 	//   record +0x390/+0x394 clock pair (3 bytes each) - no other gate term
 	//   exists; the cadence byte IS the undocumented "extra" term.
-	// All reads READ-ONLY (m_mainram only, no writes to RAM/ROM/game state).
-	// Experiment branch only - never merge to milestone.
-	bool m_trace_roundend;
-	bool m_re_have_prev;
-	u32 m_re_prev_p370[2];          // rec0/rec1 +0x370 (0x802F43D0 / 0x802F4844) last vblank
-	u32 m_re_prev_5c[2];            // rec0/rec1 +0x5C (0x802F40BC / 0x802F4530) last vblank
-	u16 m_re_prev_37a[2];           // rec0/rec1 +0x37A one-shot halfword last vblank
-	s16 m_re_prev_3a0[2];           // rec0/rec1 +0x3A0 checker countdown last vblank
-	s16 m_re_prev_3a2[2];           // rec0/rec1 +0x3A2 area time-limit watchdog last vblank
-	u32 m_re_prev_394[2];           // rec0/rec1 +0x394 segment clock last vblank
-	u32 m_re_prev_703c;             // gp+0x703C round state last vblank
-	u32 m_re_prev_7040;             // gp+0x7040 round sub-state last vblank
-	u32 m_re_prev_705c;             // gp+0x705C 0x4000-advertise gate last vblank
-	u32 m_re_prev_7074;             // gp+0x7074 link status code last vblank
-	u16 m_re_prev_7034;             // gp+0x7034 join entered latch last vblank
-	u32 m_re_prev_7624;             // gp+0x7624 join arm-enable last vblank
-	u8  m_re_prev_role;             // role byte 0x802F3FFC last vblank
-	u32 m_re_prev_7608;             // gp+0x7608 local player index last vblank
-	u32 m_re_prev_75f8;             // gp+0x75F8 global flags (bit2 watchdog block) last vblank
-	u16 m_re_prev_6ff4;             // gp+0x6FF4 join-event countdown last vblank
-	u8  m_re_prev_coop;             // (rec0|rec1 +0x370) bit2 co-op flag last vblank
-	u8  m_re_prev_74f0lo;           // gp+0x74F0 low byte (op6F cadence) last vblank
 
-	// P036 EXPERIMENT (branch patch/round-arm, off patch/latch-v2-snapshot):
-	// ROUND-ARM ASSIST - the project's FIRST functional write to game work RAM
-	// beyond the P001 keepalive floor.  Env-gated by NAMCOS23_PATCH_ROUNDARM
-	// (inert unset).  P034 run 1 NAMED the round-end blocker: the checker
-	// 0x80026E00 runs and passes gates A-D at real positional triggers on BOTH
-	// cabs and fails ONLY gate E - the +0x3A0 trigger countdown (init byte
-	// gp+0x75E4 = 4) that the desynced per-cab scripts never drain (red reached
-	// 1, blue 2, at different areas, in 321.5 s).  Everything downstream is
-	// proven healthy (blue's P033 walk 0->4, the 71-frame 0x6000 auto-arm, the
-	// 1-frame one-shot self-heal), and BOTH cabs pass through the score/result
-	// record state within ~0.5 s of each other (red rec0 05018040 @263.07 ->
-	// 01008000 @263.82; blue 06118052-class @262.57) and BOTH make natural
-	// checker calls within ~0.5 s of that state.  THE ASSIST: at the score
-	// window exit, plant the ROM's OWN fire-now idiom - wrapper 0x800D1668
-	// forces +0x3A0 <- 1 @0x800D16A8 before calling the checker - so the next
-	// NATURAL checker call pre-decrements 1 -> 0, passes gate E, and 100% stock
-	// ROM runs everything downstream (0x800166B0 entry -> round machine walk ->
-	// 0x6000 advertise -> mutual 7074==2 -> transfer screens -> op4B/4C serves
-	// -> segment re-base on both cabs).  NOT the P019-P024 forgery: no link or
-	// round state is written - one countdown halfword is released.
-	//   SIGNATURE (the score/result window; derived from the P034 run-1
-	//   record-state walk, not hardcoded to the two observed words):
-	//     OWN  rec0+0x370 (0x802F43D0): (w & 0xC48168E0) == 0x04010040
-	//       required SET   0x04010040 = bit26 result-class modifier (the 05/06
-	//         top-byte family vs plain 01/02 states) + bit16 (the result term
-	//         whose clear edge is the window exit; also a checker gate-A bit)
-	//         + 0x40 boundary marker;
-	//       required CLEAR 0xC08068A0 = 0xC0000000 mirror marks (own-record
-	//         sanity + gate-A bit30) + 0x00800000 bit23 strobe class
-	//         (05808040/01808020) + 0x6000 advertise/round-end mode (never arm
-	//         on a record already in/past round-end) + 0x800 yielded (gate A)
-	//         + 0x80 trigger class (010080c0/050080d0/060080d2) + 0x20 engaged
-	//         class (01008020/02008022).
-	//     MIRROR rec1+0x370 (0x802F4844): (w & 0x048168E0) == 0x04010040 -
-	//       same terms with the 0xC0000000 ingest marks ignored (mirrors carry
-	//       them by design).  The MIRROR term is what makes the mask robust:
-	//       blue's walking state 06018042 is a strict SUBSET of its score word
-	//       06118052 (score = walking | 0x00100010), so NO own-record-only
-	//       mask can separate them - but mid-stage the mirror shows the
-	//       partner's fight states (c1008020-class), never the result class,
-	//       so the MUTUAL signature only forms at a real stage boundary (both
-	//       cabs hit the result state within ~0.5 s; mirrors track in real
-	//       time per P034 run-1 section D).
-	//     plus mode 0x802F3FD0 == 2 && keepalive 0x802F3FD8 > 0 &&
-	//     gp+0x7608 == 0 (the record-0 ownership model everything rests on).
-	//   FIRE on the rec0 bit16-clear edge (leaving the score/result state -
-	//   bit16 is a checker gate-A term, so the checker can only pass AFTER
-	//   this edge), iff ALL of: round703c gp+0x703C == 0, mode still 2, ka
-	//   still > 0, one-shot rec0+0x37A == 0x0000 (bit0 burnt would eat the
-	//   next checker call at gate C; bit1 blocks the watchdog backstop),
-	//   post-edge word clean ((w & 0xC0006800) == 0, gate-A-shaped: mirror
-	//   marks / 0x6000 / 0x800), and cnt3a0 in [2,15] (==1: already at the
-	//   fire-now value, no write needed; <=0: checker already firing; >15:
-	//   not a believable countdown state).
-	//   THE WRITE (the only one, ever): rec0+0x3A0 <- 1 = hi halfword of the
-	//   u32 at 0x802F4400; RMW preserves the +0x3A2 area watchdog in the lo
-	//   halfword bit-exactly.  No other address is written on any path.
-	//   RAILS: ONE-SHOT per score window - after fire/skip the window is
-	//   consumed and re-arms only after the full signature has been ABSENT
-	//   >= 60 consecutive frames and then re-enters (a fresh stage boundary;
-	//   cnt3a0 legitimately re-inits to cfg75e4 at round result-1 0x80016C54,
-	//   so every boundary needs its own assist).  Armed windows that never
-	//   present the bit16-clear edge disarm after 300 frames (edge-timeout;
-	//   protects against an unforeseen bit16-held exit path turning a stale
-	//   arm into a mid-stage fire).  NON-RETRY: after a fire, if cnt3a0 rises
-	//   above 1 while round703c is still 0, the ROM overwrote the write
-	//   (record re-init) - logged ONCE, NEVER rewritten (no P025-style
-	//   fight).  Logging: ROUNDARM: patch armed banner + per-event
-	//   armed/fired/skipped/disarmed/entered/overwritten lines + 1/s
-	//   ROUNDARM: status while mode == 2 only.
-	// Experiment branch only - never merge to milestone.
-	bool m_patch_roundarm;
-	u32 m_ra_prev_p370;             // rec0 +0x370 last vblank (bit16 edge detection)
-	bool m_ra_prev_own_sig;         // own-record signature last vblank (unarmed-window diagnostic)
-	u32 m_ra_prev_703c;             // gp+0x703C last vblank (round-entry edge)
-	bool m_ra_armed;                // signature latched, waiting for the bit16-clear edge
-	u32 m_ra_armed_frame;           // frame the arm latched (edge-timeout base)
-	bool m_ra_wait_reentry;         // window consumed - re-arm needs 60 sig-absent frames + re-entry
-	u32 m_ra_gap_frames;            // consecutive full-signature-absent frames while waiting
-	bool m_ra_fire_pending;         // fired, watching entered-vs-overwritten (non-retry rail)
-	u32 m_ra_fire_frame;            // frame of the (last) fire
-	u32 m_ra_cnt_armed;             // total window arms
-	u32 m_ra_cnt_fired;             // total rec0+0x3A0 <- 1 writes
-	u32 m_ra_cnt_entered;           // total round703c 0->nonzero entries seen (any source)
-	u32 m_ra_cnt_skipped;           // total skips (fence fail / no-write-needed / unarmed window / disarm / pending-clear)
-	u32 m_ra_cnt_overwritten;       // total post-fire overwrites detected (never retried)
+	// Retained P019-P021 link-establishment knowledge (the P020 linked-gate
+	// local-record supply and P021 TXONLY wire-only advertise experiments were
+	// retired and removed in P072; the mechanism RE stands):
+	// - P019 (X) LOCAL-NEVER-SETS, symmetric on both cabs: neither cab ever
+	//   sets its own +0x370 0x6000 (local6000=0 all run), so has6000 is never
+	//   on the wire, partner6000 stays 0, gp+0x7074 never reaches 2, and
+	//   op-70 (cutscene-timer sync) never runs.  The 0x4000 micro-gate
+	//   (gp+0x705C==0, 0x80016DBC) is ALREADY satisfied yet 0x4000 never sets
+	//   => the set-code tail (0x80016DA0) is simply never reached; the real
+	//   root is one level up at the gp+0x7040 link-state that gates entry to
+	//   the "advertise-fully-linked + emit-op70" tail.  The low24 of +0x370
+	//   already mirrors cross-cab (P019 flags24=8001bc/800211).
+	// - The +0x370 word is DOUBLE-DUTY: the LOCAL live state the death/gun
+	//   path reads AND the value advertised to the peer (op55 builder -> wire
+	//   -> peer op55 RX 0x800B058C -> peer partner record 0x80013E10 -> peer
+	//   gate 0x80016BB4-BCC -> gp+0x7074==2).  P020 proved forcing 0x6000
+	//   into the LOCAL record drives the peer handshake to gp+0x7074==2
+	//   (0x118002 freeze broken) but poisons the live record: the gun-actor
+	//   (0x80013644) / own-record tick (0x80014CC0) read bit 0x2000 on the
+	//   SAME word and derail the local player into the synchronized
+	//   continue/death screen.  P021 proved a wire-only advertise (0x6000
+	//   OR-ed into the op55 24-bit wire flags in the outgoing frame copy)
+	//   lands in the peer's partner record without the derail - but op55 is
+	//   emitted only ~once per scene, so it does not persist.  (The P024
+	//   sticky-latch experiment that re-OR-ed 0x6000 into the partner record
+	//   every vblank to make it persist was a dead-end, removed in P072: the
+	//   Fable-5 audit established 0x6000 MEANS "my player is dead/in
+	//   continue-wait", so forcing it is wrong - the whole 0x6000/op-70
+	//   forcing line is retired.)  Record layout: localidx = gp+0x7608
+	//   (0x802CEE28); record +0x370 = 0x802F43D0 + idx*0x474 (rec1 0x802F4844).
+	// - PARTNER-0x2000 safety census (gold disasm, P024 pre-step - stands as
+	//   ROM knowledge): the three sites that derailed P020/P023a all read bit
+	//   0x2000 on the LOCAL record only - gun-actor 0x80013644 (0x80013690
+	//   reads 0x802F4060 + gp+0x7608*0x474), own-record visibility tick
+	//   0x80014CC0 (0x80014D7C, same local-idx record), per-actor dispatcher
+	//   0x800134A0 (reads $s1 = local record to route local-vs-link).  NONE
+	//   reads 0x2000 on the PARTNER (1-localidx) record; the op55 RX path
+	//   (0x800B058C -> 0x80013D44 sw 0x80013E10) deliberately writes the
+	//   partner record with 0x4000|0x8000 from the wire, and the only
+	//   consumer of partner 0x6000 is the gate (0x80016BB4, mask 0x6000
+	//   needs BOTH bits).
 
-	// P020 EXPERIMENT (branch patch/linked-gate-supply, off
-	// patch/op70-linked-gate-arm): FORCING supply of the LOCAL "fully-linked"
-	// 0x6000 bits, env-gated by NAMCOS23_PATCH_LINKED_GATE (inert when unset ->
-	// behaviour byte-identical to before).  P019 proved (X) LOCAL-NEVER-SETS,
-	// symmetric on both cabs: neither cab ever sets its own +0x370 0x6000
-	// (local6000=0 all run), so has6000 is never on the wire, partner6000 stays
-	// 0, gp+0x7074 never reaches 2, and op-70 (cutscene-timer sync) never runs.
-	// The 0x4000 micro-gate (gp+0x705C==0, 0x80016DBC) is ALREADY satisfied yet
-	// 0x4000 never sets => the set-code tail (0x80016DA0) is simply never
-	// reached; the real root is one level up at the gp+0x7040 link-state that
-	// gates entry to the "advertise-fully-linked + emit-op70" tail.
-	//
-	// This patch SUPPLIES the bit the ROM should set but never does: each vblank
-	// while linked gameplay is staged (mode word 0x802F3FD0 == 2 - the SAME gate
-	// the KEEPALIVE_FLOOR / CONTINUOUS_ARM blocks use), OR 0x6000 into the LOCAL
-	// record +0x370 word (read-modify-write, write back only when it changes).
-	// It is a SUPPLY, NOT a gate/partner fake: it does NOT write gp+0x7074, does
-	// NOT touch the partner record, and does NOT synthesize op-70.  The whole
-	// point is that the ROM's own op55 builder then serializes this LOCAL +0x370
-	// onto the wire (the low24 of this word already mirrors cross-cab, proven by
-	// P019 flags24=8001bc/800211), the PEER's op55 RX ingests it into its partner
-	// record (0x80013E10), the peer's gate (0x80016BB4-BCC) sees partner 0x6000
-	// and sets gp+0x7074==2, and op-70 flows NATURALLY off this one supplied bit
-	// - a test that the real downstream chain works.  Runs on BOTH cabs (same
-	// binary, env set on both); each cab supplies its OWN 0x6000.  The LOCAL
-	// record base is resolved EXACTLY as the LINKBITS trace / KEEPALIVE_FLOOR
-	// blocks do (localidx = gp+0x7608 = 0x802CEE28; local = 0x802F43D0 +
-	// localidx*0x474), so it stays correct if localidx is ever != 0.
-	//
-	// SAFETY: OR-only (never clears bits), env-gated (unset == stock), bounded
-	// to mode==2; no device/timing changes.  CAVEAT: this is a forcing SHORTCUT -
-	// if the ROM's op55 builder only serializes +0x370 under conditions that ALSO
-	// require the gp+0x7040 link-state, the supplied bit may not reach the wire
-	// (first thing to check: device LINKBITS: txflags has6000).  Experiment
-	// branch only - never merge to milestone.
-	bool m_patch_linked_gate;
-	u32 m_lg_set_count;             // total LOCAL +0x370 0x6000 supply writes (0->set transitions)
-
-	// P021 EXPERIMENT (branch patch/linked-gate-tx-only, off
-	// patch/linked-gate-supply): WIRE-ONLY 0x6000 advertise, env-gated by
-	// NAMCOS23_PATCH_LINKED_GATE_TXONLY (inert when unset; INDEPENDENT of the P020
-	// NAMCOS23_PATCH_LINKED_GATE gate - the user runs with TXONLY set and
-	// LINKED_GATE UNSET).  P020 proved the FORCING supply drives the full handshake
-	// to gp+0x7074==2 on the PEER (genuine cross-cab sync, 0x118002 freeze broken)
-	// but ALSO poisons this cab's LIVE +0x370 record: the gun-actor (0x80013644) /
-	// own-record tick (0x80014CC0) read bit 0x2000 on the SAME word and treat the
-	// local player as remote-driven -> the synchronized continue/death derail.
-	// The +0x370 word is DOUBLE-DUTY (the LOCAL live state the death/gun path reads
-	// AND the value advertised to the peer that drives the peer's gate7074==2).
-	// P021 separates them: instead of OR-ing 0x6000 into the live LOCAL record, it
-	// advertises 0x6000 ON THE WIRE ONLY.  The driver cannot reach the outgoing
-	// frame copy (that lives in the device), and the device cannot read the
-	// staging mode word (0x802F3FD0) or the env var (only the driver maps
-	// m_mainram) - so the driver computes (armed && mode==2) each vblank and pushes
-	// it to the device (set_linked_gate_txonly), which ORs 0x6000 into the op55
-	// 24-bit wire flags IN THE OUTGOING FRAME COPY (emit_tx_frame's payload, a copy
-	// read out of the C422 link RAM - NOT game RAM).  INVARIANT: the LOCAL game RAM
-	// +0x370 (0x802F43D0) is NEVER written by this patch, so the gun-actor never
-	// sees 0x2000 -> no death derail -> local player stays human.  This driver does
-	// NO RAM write at all here; it only reads the mode word and pushes the gate.
-	// SAFETY: env-gated (unset == stock), bounded to mode==2 (the gate is pushed
-	// false otherwise, so the device injects nothing), OR-only on the wire.
-	// Experiment branch only - never merge to milestone.
-	bool m_patch_linked_gate_txonly;
-
-	// P024 EXPERIMENT (branch patch/op55-carrier-repeat, off
-	// patch/linked-gate-tx-only): PARTNER-RECORD STICKY LATCH, env-gated by
-	// NAMCOS23_PATCH_OP55_REPEAT (inert when unset; STACKS on top of - and is
-	// INDEPENDENT of - the P021 TXONLY wire advertise, which stays armed).
-	// P021 PROVED the wire-only op55 0x6000 advertise lands in the PARTNER record
-	// (rec1 +0x370 = 0x802F4844 -> &0x6000) and lit the FIRST b26 (0x04000000)
-	// partner render - but op55 is emitted only ~once per scene, so the advertise
-	// (and the b26 render it lights) DOES NOT PERSIST: the partner +0x370 0x6000 is
-	// set sparsely by op55 RX then cleared again between op55 frames (the per-frame
-	// op02 coord ingest 0x800AB3B8 rewriting the word, or a ROM clear).  P024 makes
-	// the advertise PERSIST: each vblank while linked gameplay is staged
-	// (mode word 0x802F3FD0 == 2), OR 0x6000 into the PARTNER record +0x370 word so
-	// the gate (0x80016BB4-BCC reads PARTNER 0x6000, mask 0x6000 needs BOTH bits)
-	// sees persistent 0x6000 -> gp+0x7074 latches 1->2 and the b26 partner render
-	// STAYS drawn (the concrete visible win: partner stays rendered as a 2P human
-	// peer), and we can observe whether sustained gate7074==2 finally flows op-70.
-	//
-	// PARTNER-0x2000 SAFETY (the decisive pre-step, from gold disasm): the three
-	// sites that derailed P020/P023a all read bit 0x2000 on the LOCAL record only:
-	//   - gun-actor 0x80013644 (0x80013690 reads 0x802F4060 + gp+0x7608*0x474, the
-	//     LOCAL index) -> 0x2000 set takes the "ready"/skip-local-input branch.
-	//   - own-record visibility tick 0x80014CC0 (0x80014D7C reads the SAME
-	//     gp+0x7608-indexed LOCAL record) -> 0x2000 "hidden" bit bails.
-	//   - the per-actor dispatcher 0x800134A0 (step 6/9) reads rec[0x370] & 0x2000
-	//     on $s1 = base + gp+0x7608*0x474 = the LOCAL record to route local-vs-link;
-	//     it does NOT consult the partner (1-idx) record for that decision.
-	// NONE of them reads 0x2000 on the PARTNER record (1-localidx).  On the PARTNER
-	// record, 0x6000 = exactly the ROM-intended "remote networked partner is fully
-	// linked" state: the op55 RX path (0x800B058C -> 0x80013D44 sw 0x80013E10)
-	// deliberately writes the partner record with 0x4000|0x8000 from the wire, and
-	// the only consumer of partner 0x6000 is the gate (0x80016BB4).  So OR-ing
-	// 0x6000 (BOTH bits - the gate masks 0x6000 and needs both) into the PARTNER
-	// record is SAFE and is what makes it render as a 2P human peer.
-	//
-	// INVARIANT: we write ONLY the PARTNER record (0x802F43D0 + (1-localidx)*0x474),
-	// NEVER the LOCAL record (rec0 when localidx==0).  The local gun stays human; no
-	// death/black-screen derail (the structural cause of the P020 derail - local
-	// 0x2000 - is never created).  Mechanism (A) "partner sticky latch" was chosen
-	// over (B) "op55 TX repeat" because the pre-step proved partner 0x2000 safe, so
-	// the direct driver-side OR is the simplest, lowest-blast-radius path AND avoids
-	// re-emitting/restamping op55 frames (the P009 replay-reject pitfall - never
-	// touch op02 coordinates or the 0x5A cell-0 marker).  This block runs in vblank
-	// AFTER the ROM has executed the frame (and after any within-frame op02 clear of
-	// the word), so the OR persists into the next frame's gate read.  OR-only,
-	// mode-2-bounded, idempotent (writes back only when 0x6000 not already both set).
-	// Experiment branch only - never merge to milestone.
-	bool m_patch_op55_repeat;
-	u32 m_or_partner6000_count;     // total PARTNER +0x370 0x6000 latch writes (not-both -> both)
-
-	// P040 EXPERIMENT (branch patch/op6f-394-clamp, off patch/latch-v3-dedupe):
-	// op6F SEGMENT-CLOCK ADOPTION CLAMP - a driver-side CONDITIONAL STORE FILTER,
-	// env-gated by NAMCOS23_PATCH_OP6F_NO394 (inert unset).  No instruction is
-	// modified, no game code / game RAM is written: the patch only PREVENTS one
-	// ROM store from landing.
+	// P040 knowledge, retained (the v1 conditional STORE FILTER - a write tap
+	// on rec0+0x394 keyed on pc() inside the adoption receiver's PC range,
+	// which required forcing the main-CPU INTERPRETER because the DRC's
+	// exported pc is block-stale mid-store - was superseded by the P040b NOP
+	// below and removed in P072; its adopt-edge FALSIFIER survives as the
+	// NO394B backstop, members below):
 	//
 	// MECHANISM SUPPRESSED (P039 static RE + P038 run, confirmed live): the op6F
 	// clock-adoption receiver 0x800B2448 (RX dispatch 0x8023F4D0[0x6F] @0x8023F68C)
@@ -2715,100 +2336,35 @@ protected:
 	// (P038: blue re-base @244.27 poisoned @253.388, rec0_394 +9286 landing
 	// ==rec0_390 EXACT; P033 +10.9 s; P036 +11.5 s; P034 never in 57.75 s - a
 	// once-per-256-frames emitter x lossy delivery lottery).  The play-clock half
-	// (+0x390 @0x800B2504) is BENIGN (both cabs' play clocks are wall-synced by
-	// the seeded tick + lockstep; P039 verified its consumers) and is NOT touched.
+	// (+0x390 @0x800B2504) was left live by P040/P040b and is handled by P041.
+	// The OTHER +0x394 writers (all must pass untouched / stay unpoked):
+	// per-frame tick +1 (0x80014D64/78), re-base zero (0x80104980), record-init
+	// -1 (0x80013E34), Handler-A saved-pair restore (0x801046A0), session-sync
+	// ingest (0x800B08F4).
 	//
-	// THE FILTER: a memory-system write tap on the rec0 segment-clock word
-	// +0x394 = virtual 0x802F43F4 -> PROGRAM-space address 0x002F43F4 (the space
-	// applies map.global_mask(0xfffffff); the R4650 core passes raw kseg0
-	// addresses through - see the accessor notes below).  When a 32-bit store to
-	// that word arrives from a PC inside the adoption receiver [0x800B2448,
-	// 0x800B2520] (function body actually ends @0x800B2510 jr+slot; the wider
-	// task-specified range is harmless because no other instruction in it stores
-	// to this word), the tap rewrites the store DATA to the word's current value
-	// - the store still "lands" but changes nothing = dropped.  Every other
-	// writer passes untouched: per-frame tick +1 (0x80014D64/78), re-base zero
-	// (0x80104980), record-init -1 (0x80013E34), Handler-A saved-pair restore
-	// (0x801046A0), session-sync ingest (0x800B08F4).
+	// SCOPE: rec0 only (0x802F43F4) - gp+0x7608 localidx is 0 on BOTH cabs in
+	// every traced run (ROUNDEND static census: only sw $0 writers + a dead
+	// menu toggle); if a future ROM path adopted into rec1 (+0x394 @0x802F4868)
+	// only the falsifier would see it.  Structurally inert on the master (role
+	// bit7 set skips the stores at 0x800B24D0).
 	//
-	// PC-AT-STORE-TIME RELIABILITY (the core facts this rests on; all verified
-	// against this tree's src/devices/cpu/mips/*):
-	//  - namcos23 runs an R4650 (r4650be_device).  Its INTERPRETER overrides
-	//    RBYTE..WDOUBLE and in kernel mode passes the RAW virtual address
-	//    straight to m_program->write_dword() (mips3.cpp 1673-81) - it never
-	//    consults the add_fastram() ranges (those compare PHYSICAL addresses and
-	//    are only reached by the base-class TLB cores' accessors + the DRC
-	//    accessor), so the write tap ALWAYS fires for kseg0 stores.
-	//  - mips3 exports NO exact-instruction-address state: MIPS3_PC ==
-	//    STATE_GENPC (mips3.h:61) and STATE_GENPCBASE ("CURPC", mips3.cpp:739)
-	//    BOTH map to m_core->pc; m_ppc (the true instruction base) is not
-	//    exported, so pc() and pcbase() always read the same variable.  The
-	//    interpreter advances m_core->pc BEFORE executing the op body
-	//    (execute_run: pc += 4, then dispatch), so at store time pc() reads
-	//    store-PC+4 = 0x800B250C - the task-anticipated "pc() at store time is
-	//    offset" case, verified statically here.  The store is NOT in a branch
-	//    delay slot (predecessor @0x800B2504 is the 390 sw; the jr $ra follows
-	//    @0x800B250C), so no branch-target aliasing is possible.  The filter
-	//    therefore matches pc() against the containing-function RANGE
-	//    [0x800B2448, 0x800B2520] (not a single PC) - which absorbs the +4
-	//    offset; the blocked line logs the observed pc so run 1 empirically
-	//    confirms the compare value (expect exactly 0x800B250C).
-	//  - Under the DRC (MAME default -drc; this fork's launcher passes no
-	//    -nodrc) the generated code updates m_core->pc only at block exits /
-	//    exceptions / debugger hooks (mips3drc.cpp generate_sequence_instruction),
-	//    so BOTH pc() and pcbase() are STALE inside a mid-block store - the
-	//    filter would silently fail open.  A value-pattern fallback was
-	//    considered and REJECTED (orchestrator call: prefer the PC range +
-	//    document).  Resolution: when the env gate is armed, the timecrs2
-	//    machine config calls m_maincpu->set_force_no_drc(true) (the same
-	//    driver-side switch atvtrack/aristmk6 use), forcing the INTERPRETER,
-	//    whose per-instruction pc step makes the tap-time pc deterministic
-	//    (store-PC+4, absorbed by the range).  This is the one behavioral
-	//    rider of the patch: an armed run executes the main CPU interpreted
-	//    (slower; VBLANK_LOCKSTEP bounds cross-cab drift, and a sub-60fps run
-	//    shows up immediately in the lockstep stall counters).  Unset = stock
-	//    DRC, bit-exact stock behavior.
-	//  - The tap writes NO memory (it only edits the in-flight data by
-	//    reference) -> no recursion; it is installed once at machine_start and
-	//    persists across soft reset and save-state load (taps live in the
-	//    memory system, not in save data; the memory_passthrough_handler member
-	//    only keeps the handle alive).  Debugger pokes are passed through
-	//    untouched (side_effects_disabled() guard).
-	//
-	// SCOPE / LIMITS: rec0 only (0x802F43F4) - gp+0x7608 localidx is 0 on BOTH
-	// cabs in every traced run (ROUNDEND static census: only sw $0 writers + a
-	// dead menu toggle), matching every other patch/tap in this file; if a
-	// future ROM path adopted into rec1 (+0x394 @0x802F4868) the filter would
-	// not see it - the adopt-edge falsifier below would.  Applied to BOTH cabs;
-	// structurally inert on the master (role bit7 set skips the stores at
-	// 0x800B24D0, so nothing from the adoption PC range ever reaches the word -
-	// expected blocked count on red = 0).
-	//
-	// THE FALSIFIER (read-only, armed by the same env): a per-vblank adopt-edge
-	// trace - rec0_394 jumping by >2 between vblank samples AND landing within
-	// +/-3 of rec0_390 is the adoption fingerprint (P038 would have fired it
-	// exactly twice on blue: the +8 micro-adopt @95.27 and the +9286 poison
-	// @253.388, and never on red).  With the filter armed it MUST stay 0; any
-	// hit = a second adoption path the RE missed (or a Handler-A saved-pair
-	// restore whose saved pair happens to sit within +/-3 of the running play
-	// clock - result-screen windows only; cross-check ROUNDEND lines by t=).
-	// Experiment branch only - never merge to milestone.
-	bool m_patch_op6f_no394;
-	memory_passthrough_handler m_op6f_no394_tap;
-	u32 m_no394_blocked;            // total adoption stores dropped (expected: red 0; blue = every DELIVERED op6F, incl. former equal-pair no-ops -> doubles as the true delivery-rate instrument)
-	u32 m_no394_blocked_win;        // 1/s window count of drops
-	u32 m_no394_pass394;            // total non-adoption +0x394 stores passed untouched (tick/re-base/init/restore)
-	u32 m_no394_pass394_win;        // 1/s window count of passes
+	// THE FALSIFIER (read-only; since P072 armed by NAMCOS23_PATCH_OP6F_NO394B):
+	// a per-vblank adopt-edge trace - rec0_394 jumping by >2 between vblank
+	// samples AND landing within +/-3 of rec0_390 is the adoption fingerprint
+	// (P038 would have fired it exactly twice on blue: the +8 micro-adopt
+	// @95.27 and the +9286 poison @253.388, and never on red).  With the NOP
+	// armed it MUST stay 0; any hit = an adoption path the RE missed (or a
+	// Handler-A saved-pair restore whose saved pair happens to sit within
+	// +/-3 of the running play clock - result-screen windows only).
 	u32 m_no394_adopt_edges;        // total adopt-edge falsifier hits (MUST stay 0 while armed)
 	bool m_no394_have_prev;
 	u32 m_no394_prev_394;           // rec0 +0x394 last vblank (adopt-edge jump basis)
 
-	// P040b EXPERIMENT (branch patch/op6f-394-clamp - a MECHANISM AMENDMENT of
+	// P040b (branch patch/op6f-394-clamp - a MECHANISM AMENDMENT of
 	// P040 on the SAME branch, not a new experiment): the SAME op6F
 	// 394-adoption suppression, swapped from the v1 conditional store filter
 	// to a VERIFY-BEFORE-POKE RAM-CODE NOP that runs under the DRC at FULL
-	// SPEED - env NAMCOS23_PATCH_OP6F_NO394B (inert unset; independent of the
-	// v1 env above, which stays functional).
+	// SPEED - env NAMCOS23_PATCH_OP6F_NO394B (inert unset).
 	//
 	// WHY THE SWAP (P040 run 1, 2026-07-07): the filter is PROVEN at the
 	// store level (blue blocked=44, every line pc=0x800B250C, red 0,
@@ -2834,7 +2390,7 @@ protected:
 	//   anything else -> ROM-REVISION GUARD: one-shot REFUSED banner, stay
 	//                 inert (never NOP an unverified instruction).
 	// The +0x390 play-clock adoption @0x800B2504 (word 0xAC470390) stays
-	// untouched - same scope as v1.
+	// untouched by THIS poke (P041's NO390B below owns that half).
 	//
 	// DRC INVALIDATION - VERIFIED against this tree, not assumed:
 	//  - mips3's DRC has NO store-triggered invalidation: a RAM write (via
@@ -2862,7 +2418,7 @@ protected:
 	//    re-fetches every instruction from RAM and is trivially safe.
 	//  - RESIDUAL WINDOWS, guarded not hand-waved: (a) a loader re-copy
 	//    (incl. the soft-reset re-boot) re-materializes 0xAC460394 -> the
-	//    1/s guard in the status block re-reads the word and RE-POKES on
+	//    1/s guard re-reads the word and RE-POKES on
 	//    observation (logged + counted; soft reset also flushes the whole
 	//    DRC cache via device_reset, so no stale block survives that path);
 	//    (b) a block compiled inside the sub-second window between a
@@ -2872,22 +2428,21 @@ protected:
 	//    DRC-safe) is the backstop that exposes any executed adoption.
 	//    Expected in practice: repokes = 0.
 	//
-	// Shares the v1 falsifier + 1/s status blocks (gate widened to either
-	// env); under NO394B-only the tap counters legitimately read 0 (no tap
-	// is installed) and the OP6F_NO394B status line's word2508 field is the
-	// aliveness rail instead (expect 00000000 from the poke onward).  Both
+	// The adopt-edge falsifier (kept verbatim from the removed v1 filter:
+	// read-only, pc-free, DRC-safe - members above) is this poke's backstop;
+	// the 1/s status line was removed in P072 phase C, so the guard's
+	// re-poke line is the remaining re-materialization record.  Both
 	// cabs run the same env; structurally inert on the master (its role
 	// gate skips the stores anyway - the NOP just makes that unconditional).
 	// NO set_force_no_drc, NO write tap.  Counters diagnostics-only, not
 	// save_item'd (any save/load state converges: word==original -> poke or
-	// re-poke path; word==0 -> already the wanted NOP).  Experiment branch
-	// only - never merge to milestone.
+	// re-poke path; word==0 -> already the wanted NOP).
 	bool m_patch_op6f_no394b;
 	bool m_no394b_poked;            // one-shot: the NOP is in RAM
 	bool m_no394b_refused;          // one-shot: ROM-revision guard tripped (unexpected nonzero word) - inert
 	u32 m_no394b_repokes;           // guard re-pokes after re-materialization (expect 0)
 
-	// P041 EXPERIMENT (branch patch/op6f-390-clamp, off patch/op6f-394-clamp):
+	// P041 (branch patch/op6f-390-clamp, off patch/op6f-394-clamp):
 	// NOP the op6F +0x390 PLAY-CLOCK adoption store too - the OTHER HALF of
 	// the pair P040b left live - env NAMCOS23_PATCH_OP6F_NO390B (inert unset;
 	// independent of both envs above).  Structurally identical to P040b: a
@@ -2937,12 +2492,10 @@ protected:
 	// negative; the segment re-base zeroes 394, NOT 390).  With both pokes
 	// armed it MUST stay 0 on both cabs; a hit = the adoption leaked via a
 	// path the NOP does not cover (or a Handler-A saved-pair restore -
-	// result-screen windows only, cross-check ROUNDEND lines by t=).  The
-	// recipe's NAMCOS23_TRACE_PLAYCLOCK "clock-jump rec0_390" line (delta
-	// outside 0..2, negatives included) stays available as the independent
-	// cross-check.  Counters diagnostics-only, not save_item'd (any
-	// save/load state converges exactly as P040b's does).  Experiment branch
-	// only - never merge to milestone.
+	// result-screen windows only).  (The P025 PLAYCLOCK clock-jump trace that
+	// served as the independent cross-check was removed in P072.)
+	// Counters diagnostics-only, not save_item'd (any
+	// save/load state converges exactly as P040b's does).
 	bool m_patch_op6f_no390b;
 	bool m_no390b_poked;            // one-shot: the NOP is in RAM
 	bool m_no390b_refused;          // one-shot: ROM-revision guard tripped (unexpected nonzero word) - inert
@@ -2951,141 +2504,31 @@ protected:
 	bool m_no390b_have_prev;
 	u32 m_no390b_prev_390;          // rec0 +0x390 last vblank (jump-census basis)
 
-	// P043 EXPERIMENT (branch patch/wave-init-hold, off patch/op6f-390-clamp):
-	// close the WAVE-INIT COMPLETION RACE that P042's static RE named end-to-
-	// end - env NAMCOS23_PATCH_WAVEINIT_HOLD (inert unset; independent of every
-	// env above).  TWO verify-before-poke RAM-code WORD patches (the proven
-	// P040b/P041 mechanism - deferred to vblank, one-shot, ROM-revision REFUSE,
-	// 1/s re-check/re-poke guard - but each poked word here is a changed
-	// IMMEDIATE, not a NOP).
-	//
-	// THE RACE (P042, all PC-anchored in full.txt): the per-frame area-
-	// completion check 0x80014074 (own records only, p370 bit30 gate) has a
-	// condition B that looks up the segment's WAVE-ANCHOR entity id
-	// (rec+0x364 = desc[0x14]) in the 4-slot (id,handle) ring @0x802D2030
-	// (lookup leaf 0x800B5690, SOLE caller = the jal @0x8001418C): any
-	// NEGATIVE verdict (-1 no-id / -2 never-registered / released handle -1)
-	// sets p370 |= 0x110000 (bit16, NO bit17 - the logged skip signature
-	// 01008020->01018020) and the area is COMPLETE.  During the walk (f5c =
-	// rec+0x5C bit0 clear) the ROM holds condition B until the LAST 10 FRAMES
-	// of the intro timeline - `slti $v0,$v0,0xB` @0x8001417C on
-	// end-cursor = rec[0x6A]-rec[0x68] - but the wave only registers/activates
-	// AT the timeline end (per-frame wave tick 0x800A113C -> activation
-	// 0x800A0E5C sets +0x5C bit0 at cursor==end-1), so EVERY fight area runs a
-	// 10-frame (0.167 s = the measured 0.17 s skip margin, exactly) window in
-	// which "is the wave dead?" is asked before the wave exists.  The anchor's
-	// ring slot is written ONLY by descriptor commits (mirror commits are
-	// op02-ingest-paced), op4B/4C snapshot-ingest creates, and op-0x20 release
-	// transactions - so at the 150 ms HB-floor exchange regime the seed-time
-	// link-lifecycle burst (2-3 hops = +0.30-0.45 s) lands INSIDE the window
-	// and the first allowed check completes the empty area (room-1 skips 7/7
-	// on record); allocator sharp edges (find returns a released handle -1
-	// without resurrecting @0x800B5710; ring-full = silent non-registration
-	// @0x800B5830-40) supply the fight-phase instant-resolves (blue's boss
-	// 14/14, stage-2) which are clock-independent - exactly why P040b's clean
-	// clock did not move them.
-	//
-	// POKE 1 "window-narrow" @virtual 0x8001417C (program-space 0x0001417c),
-	// VERIFIED in full.txt line 20576 before hardcoding:
-	//   8001417C: 2842000B slti $v0,$v0,0xb
-	// -> 0x28420001 (slti $v0,$v0,1): the walk-phase condition-B window
-	// shrinks from the last 10 frames to end-cursor<1.  FIGHT descriptors
-	// activate at cursor==end-1 (end-cursor==1, still gated) and flip bit0
-	// FIRST - the pre-activation completion window is closed COMPLETELY (the
-	// next condition-B run takes the bit0 branch with the wave loaded).
-	// WALK-ONLY descriptors (rec+0x70==-1, never engage/activate) still
-	// advance through the designed desc[0x14]==-1 -> lookup -1 path once the
-	// cursor ticks past end (end-cursor<=0) - up to 10 frames (<=0.17 s) later
-	// than stock per walk segment, benign.  Not a branch target, not in a
-	// delay slot (beqz@80014168 targets 0x80014188; the slti feeds
-	// beqz@80014180).
-	//
-	// POKE 2 "not-found clamp" @virtual 0x800B56E0 (program-space
-	// 0x000b56e0), VERIFIED in full.txt line 185785 before hardcoding:
-	//   800B56E0: 2402FFFE li $v0,-2
-	// -> 0x24020000 (li $v0,0 = addiu $v0,$zero,0): the ring lookup's
-	// not-found verdict becomes "alive".  Kills the beta/never-registered
-	// flavor EVERYWHERE including the fight phase (bit0 set - which poke 1
-	// does not cover).  Scope is exactly condition B: 0x800B5690's sole
-	// caller is 0x8001418C (career grep re-verified this session; the
-	// allocator 0x800B56EC has its own inline ring search).  The id==-1 -> -1
-	// fast path (walk-segment advance) and the found-slot handle return
-	// @0x800B56A4 are untouched; the word is the fall-through of the search
-	// loop (bgez@800B56D8), not a branch target, not a delay slot.  Legit -2
-	// completions lost: only an anchor released AFTER its slot was recycled
-	// by a newer registration (one-frame ordering window; the 40 s area
-	// watchdog +0x3A2 still backstops).
-	//
-	// MECHANICS (per poke, independent - one REFUSING must NOT block the
-	// other): each armed vblank until that poke is terminal, read the u32 via
-	// the CPU program space; 0 = boot loader has not copied the program yet,
-	// keep waiting; the verified original word = poke the replacement,
-	// one-shot banner; any OTHER nonzero = one-shot REFUSED banner for THAT
-	// poke only (ROM-revision guard - never patch an unverified instruction;
-	// the sibling poke and all rails continue).  DRC soundness = the P040b
-	// ordering argument (mips3 has no store-triggered invalidation; loose
-	// verify checks only sequence-head words; both words are mid-sequence):
-	// the pokes land in early boot (P040b measured the loader placing this
-	// image by frame ~11, t~0.18 s) and the completion check first executes
-	// when gameplay first runs (attract demo, tens of seconds later at the
-	// earliest), so its block is ALWAYS compiled from the already-poked RAM.
-	// Residual re-copy windows FAIL TO STOCK, not to corruption (a block
-	// compiled from the original words merely behaves as the unpatched ROM):
-	// the 1/s combined guard re-reads both words, re-pokes on
-	// re-materialization (logged + counted, expect 0), and the status line
-	// carries both word rails (expect 28420001 / 24020000 from the pokes
-	// onward).  Both cabs run the same env (the race is role-symmetric - each
-	// cab completes its OWN record).  Counters diagnostics-only, not
-	// save_item'd (any save/load state converges: original word -> poke or
-	// re-poke path; poked word -> nothing to do).  Experiment branch only -
-	// never merge to milestone.
-	bool m_patch_waveinit_hold;
-	bool m_wih_win_poked;           // one-shot: window-narrow word is in RAM
-	bool m_wih_win_refused;         // one-shot: ROM-revision guard tripped @0x8001417C - this poke inert
-	u32 m_wih_win_repokes;          // guard re-pokes after re-materialization (expect 0)
-	bool m_wih_clamp_poked;         // one-shot: not-found-clamp word is in RAM
-	bool m_wih_clamp_refused;       // one-shot: ROM-revision guard tripped @0x800B56E0 - this poke inert
-	u32 m_wih_clamp_repokes;        // guard re-pokes after re-materialization (expect 0)
+	// Retained P042/P043 wave-init RACE knowledge (the wave-init hold
+	// verify-before-poke pair that tried to close it was retired - P043 run:
+	// regression-black-screen, the imm=1 window is unreachable because the
+	// walk cursor saturates at end-1; the P043b imm=2 amendment was VETOED
+	// on value, rescuing only ~1/14 skips - and removed in P072; the real
+	// fix shipped as ANCHOR_RESURRECT (P044b) + REAPER_PATIENCE (P048)):
+	// the per-frame area-completion check 0x80014074 (own records only, p370
+	// bit30 gate) holds its condition B - ring lookup 0x800B5690 of the
+	// wave-anchor id rec+0x364 in the 4-slot ring @0x802D2030, sole caller
+	// the jal @0x8001418C - until the LAST 10 FRAMES of the intro timeline
+	// (slti $v0,$v0,0xB @0x8001417C, word 0x2842000B, on end-cursor =
+	// rec[0x6A]-rec[0x68]); but the wave only registers/activates AT the
+	// timeline end (wave tick 0x800A113C -> activation 0x800A0E5C sets +0x5C
+	// bit0 at cursor==end-1), so every fight area runs a 10-frame (0.167 s =
+	// the measured skip margin) window in which "is the wave dead?" is asked
+	// before the wave exists; a negative verdict sets p370 |= 0x110000 and
+	// the area completes EMPTY.  The lookup's not-found verdict is li $v0,-2
+	// @0x800B56E0 (word 0x2402FFFE); allocator sharp edges - find returns a
+	// released handle -1 WITHOUT resurrecting @0x800B5710, ring-full = silent
+	// non-registration @0x800B5830-40 - supply the clock-independent
+	// fight-phase instant-resolves.  Walk-only descriptors (rec+0x70==-1)
+	// advance via the designed desc[0x14]==-1 -> lookup -1 path.
 
-	// P043 trace: READ-ONLY wave-anchor / ring observability - env
-	// NAMCOS23_TRACE_WAVEINIT (independent of the patch env; either works
-	// alone).  All reads m_mainram only, per-event lines only:
-	//  - "WAVEINIT: bit16" on every p370 bit16 0->1 edge (both records,
-	//    rec= tags them; mirrors carry bit30 in the printed p370): dumps the
-	//    f5c word (+0x5C, bit0 = wave active), the intro-timeline cursor/end
-	//    (rec+0x68/rec+0x6A) and end-cursor, the anchor id (rec+0x364), the
-	//    big-map view (rec+0x368), the FULL 4-slot ring (id:handle x4,
-	//    0x802D2030..0x802D204C) + rotation cursor (gp+0x73E0 = 0x802CEC00),
-	//    and an EMULATED ring lookup replicating 0x800B5690 exactly
-	//    (id==-1 -> -1; else slots (cursor+a1)&3 for a1=3..0, first id match
-	//    returns the slot handle lh; none -> -2) - enough to name the poison
-	//    flavor per the P042 taxonomy, printed as flavor=: hookA-conditionA
-	//    (bit17 set in the same store - the per-descriptor hook, ring
-	//    irrelevant), gamma-rearm (anchor id changed since the engage rise),
-	//    no-id-walkclass (anchor==-1, the designed walk-advance path),
-	//    beta-never-registered (lookup -2), alpha-released-handle (found,
-	//    handle<0), healthy-unexplained (found, handle>=0, no bit17 - MUST
-	//    not appear: condition B cannot have fired on a healthy slot).
-	//  - "WAVEINIT: engage-cycle" once per activation (f5c bit0 0->1): the
-	//    cycle's engage t (p370 bit5 0x20 rise), the stock check-window entry
-	//    t (end-cursor crossing <11 during the walk) and the narrowed-window
-	//    entry t (crossing <1), the activation t, the anchor, and whether
-	//    bit16 was ALREADY set (pre-latched = the skip signature).
-	// Expected healthy choreography (P042 F3): engage -> window11 at
-	// engage+0.35 -> activation at engage+0.50, bit16 never inside the walk
-	// window.  Cycle trackers re-arm on each engage rise; save/boot states
-	// converge via the have_prev guard.  Experiment branch only.
-	bool m_trace_waveinit;
-	bool m_wt_have_prev;
-	u32 m_wt_prev_p370[2];          // last vblank p370 (bit16 + engage-bit edges)
-	u32 m_wt_prev_5c[2];            // last vblank +0x5C (activation bit0 edge)
-	s32 m_wt_prev_endcur[2];        // last vblank end-cursor (window-crossing edges)
-	double m_wt_engage_t[2];        // t of the current cycle's engage rise (-1 = none yet)
-	u32 m_wt_engage_anchor[2];      // rec+0x364 latched at the engage rise (gamma detection)
-	double m_wt_win11_t[2];         // t end-cursor first crossed <11 in the walk this cycle (-1 = not yet)
-	double m_wt_win1_t[2];          // t end-cursor first crossed <1 in the walk this cycle (-1 = not yet)
 
-	// P044 EXPERIMENT (branch patch/anchor-lifecycle, off patch/wave-init-hold):
+	// P044 (branch patch/anchor-lifecycle, off patch/wave-init-hold):
 	// the ANCHOR LIFECYCLE fix - attack the named root of ALL area skips.  The
 	// P043b measurement (402 s, second boss) proved the ENTIRE skip economy
 	// (14/14 race skips, room-1 through the tank set-piece, both cabs) is
@@ -3126,50 +2569,30 @@ protected:
 	// unmatchable) yet still a perfectly reusable free slot (handle stays -1);
 	// and for condition B a scrubbed slot merely turns verdict -1 into -2 -
 	// SAME negative sign = SAME completion behavior (the designed last-kill ->
-	// complete mechanism is sign-only).  That corollary is gate 3.
+	// complete mechanism is sign-only).  That corollary is gate 2 (the scrub).
 	//
-	// THREE INDEPENDENT ENV GATES (any subset; all inert unset; both cabs -
-	// the race is role-symmetric):
+	// ONE ENV GATE remains (both cabs - the race is role-symmetric; the
+	// read-only NAMCOS23_TRACE_OP20 ring/wire trace companion was removed in
+	// P072 - its retained wire RE sits below).  A third gate, the env-gated walk-phase anchor-shield
+	// death repair (capture the anchor's live ring handle
+	// and restore it into slot+4 if the slot went dead mid-walk), was
+	// RETIRED and removed in P072: the P044 run was a regression-black-screen
+	// - the v1 source-blind repair vetoed the ROM's OWN local
+	// staging-completion release (P044b proved every pre-round-start anchor
+	// death is a LOCAL one-shot release: staging anchors are BORN-TO-DIE, so
+	// a repair must be KILL-SOURCE-AWARE), and the re-speced shield v2 was
+	// cancelled when RESURRECT alone (+ the P048 reaper fix) closed the skip
+	// economy:
 	//
-	// (1) NAMCOS23_TRACE_OP20 - READ-ONLY ring-transaction trace (grep "OP20:").
-	//     Driver half (here): per-vblank diff of the 4 ring slots names every
-	//     kill (handle live->dead), registration (id change + live handle),
-	//     revive (falsifier - no stock path does this) and dead-slot rewrite,
-	//     each with which record's rec+0x364 matches the id, that record's
-	//     walk/fight phase (f5c bit0) and end-cursor; plus a commit-edge
-	//     detector (rec+0x35C/+0x364 change) that classifies each commit's
-	//     first post-commit ring state: born-dead (found dead - the class-i
-	//     counter), unregistered (absent - beta fuel), healthy.  Device half
-	//     (namco_c139.cpp, same env): the P018 cell-walk reports genuine
-	//     op-0x20 release / op-0x1F despawn cells on RX and TX with their wire
-	//     id16 - an rx-release adjacent (by t=) to a ring-kill NAMES the killer
-	//     as an ingested release; a kill with no adjacent rx line = local
-	//     release (cull/cascade/avatar).  Purpose: name the class-(ii) killer
-	//     and measure sub-class shares.  Vblank granularity: a same-frame
-	//     kill+re-register collapses to one edge (documented since P015).
+	// Retained P044 wire RE (from the removed OP20 trace): op-0x20 RELEASE =
+	// RX handler 0x800ACD48, EXACTLY 2 operand bytes (BE id16 -> big-map
+	// 0x8010FE84 -> entity -> release 0x800B5BC8, whose ring-mark stores
+	// handle=-1 @0x800B5C14-1C); op-0x1F DESPAWN = RX 0x800ACCA0, EXACTLY 4
+	// operand bytes (id16 + b1 + b2 -> 0x800B5E1C); the local
+	// release-with-notify encoder is 0x800ACD20.  The wire id16 is the
+	// big-map index (parallel-entity +0x82), NOT the ring's 32-bit anchor id.
 	//
-	// (2) NAMCOS23_PATCH_ANCHOR_SHIELD - walk-phase anchor-death repair (grep
-	//     "ANCHOR_SHIELD:").  Own records only (p370 bit30 clear - the
-	//     completion-check domain), anchor valid (!= -1), f5c bit0 CLEAR (wave
-	//     not yet active - "no legitimate partner kill can target a wave that
-	//     does not exist yet"): while walking, the shield CAPTURES the anchor's
-	//     live ring handle each vblank; if the slot goes dead mid-walk
-	//     (ingested op-0x20 echo or local cull), it RESTORES the captured
-	//     handle (halfword lane at slot+4, low half preserved) - so condition
-	//     B's window-open lookup sees a live anchor and the empty completion
-	//     never latches.  The release itself is NOT undone (the entity keeps
-	//     its released mark; only the ring VIEW is restored): whether the
-	//     activation then plays the wave correctly is exactly what run 1
-	//     measures.  NO re-kill is applied at activation - re-applying would
-	//     recreate the skip at the activation instant, the outcome P043b
-	//     already proved worthless (imm=2 verdict).  P025 log-and-yield: max 8
-	//     repairs per walk cycle, then yield with a line - never fight a
-	//     persistent ROM writer.  Born-dead slots (no live capture ever) are
-	//     logged "missed" and left alone - gate 3's domain.  Repairs write
-	//     m_mainram DATA (never code): no DRC concern (fastram loads/stores
-	//     target the same host buffer; vblank runs on the emulation thread).
-	//
-	// (3) NAMCOS23_PATCH_ANCHOR_RESURRECT - the born-dead fix: dead-slot ID
+	// NAMCOS23_PATCH_ANCHOR_RESURRECT - the born-dead fix: dead-slot ID
 	//     SCRUB (grep "ANCHOR_RESURRECT:").  Per vblank, any ring slot with
 	//     handle < 0 (GUARD: never touch a live handle) and a real id (not 0 =
 	//     init state, not 0xFFFFFFFF = already scrubbed) gets its ID word
@@ -3182,281 +2605,37 @@ protected:
 	//     game data per dead slot, sign-neutral for condition B (see the
 	//     corollary above; the current, already-doomed cycle still completes
 	//     empty - the scrub fixes the NEXT commit, which is exactly the
-	//     born-dead cascade class).  Runs AFTER the shield in the same vblank
-	//     (a repaired slot is live again and is skipped).  INCOMPATIBLE with
-	//     the retired NAMCOS23_PATCH_WAVEINIT_HOLD clamp poke (li -2 -> li 0
-	//     would make scrubbed slots read ALIVE forever): machine_start REFUSES
-	//     to arm RESURRECT if WAVEINIT_HOLD is set.
+	//     born-dead cascade class).  (The retired
+	//     wave-init-hold clamp poke - not-found verdict forced "alive" - was
+	//     incompatible with the scrub; it was removed in P072 together with
+	//     its machine_start interlock.)
 	//
-	// Ordering per vblank: sample -> (1) trace diffs vs prev (ROM-caused
-	// transactions only) -> (2) shield repairs -> (3) resurrect scrubs ->
-	// prevs = POST-WRITE state (our own writes never masquerade as ROM
-	// transactions in the next sample).  Counters diagnostics-only, not
-	// save_item'd.  Experiment branch only - never merge to milestone.
-	bool m_trace_op20;              // gate 1: READ-ONLY ring-transaction trace
-	bool m_patch_anchor_shield;     // gate 2: walk-phase anchor-death repair
-	bool m_patch_anchor_resurrect;  // gate 3: dead-slot id scrub
-	bool m_anl_have_prev;           // shared sampler basis valid
-	u32 m_anl_prev_ringid[4];       // last post-write ring slot ids
-	s32 m_anl_prev_ringh[4];        // last post-write ring slot handles (s16-extended)
-	u32 m_anl_prev_anchor[2];       // last rec+0x364 per record (commit-edge detection)
-	u32 m_anl_prev_desc[2];         // last rec+0x35C per record (commit-edge detection)
-	u32 m_o20_kills;                // trace: handle live->dead edges
-	u32 m_o20_regs;                 // trace: fresh registrations (id change + live handle)
-	u32 m_o20_revives;              // trace FALSIFIER: same-id dead->live without registration (no stock path; expect 0)
-	u32 m_o20_rewrites;             // trace: dead-slot rewrites / other combos
-	u32 m_o20_borndead;             // trace: commits landing on a stale dead slot (class i; RESURRECT armed => ~0)
-	u32 m_o20_unreg;                // trace: commits whose anchor is absent from the ring (beta fuel)
-	u32 m_o20_healthy;              // trace: commits whose anchor is ring-live at first sample
-	s32 m_ash_live_handle[2];       // shield: captured live handle for the current walk anchor (-1 = none yet)
-	u32 m_ash_live_id[2];           // shield: anchor id the capture belongs to
-	u32 m_ash_repairs_cycle[2];     // shield: repairs this walk cycle (cap 8, then yield)
-	bool m_ash_yielded[2];          // shield: yielded this cycle (persistent writer)
-	bool m_ash_missed_logged[2];    // shield: born-dead "missed" line latched this cycle
-	u32 m_ash_repairs;              // shield: total repairs
-	u32 m_ash_yields;               // shield: total yields
-	u32 m_ash_missed;               // shield: total missed (born-dead sightings from the shield's view)
+	// Per vblank: sample the ring, then scrub (our writes are the last step,
+	// so a scrub can never be mistaken for a ROM transaction by any observer).
+	// Counters diagnostics-only, not save_item'd.
+	bool m_patch_anchor_resurrect;  // dead-slot id scrub (adopted, default-on)
 	u32 m_ars_scrubs;               // resurrect: total dead-slot id scrubs
 
-	// P055 EXPERIMENT (branch patch/boat-jitter-trace, off patch/single-burst-pump):
-	// READ-ONLY per-vblank BLUE entity-ingest trace (grep "BOATJITTER:"), env-gated
-	// by NAMCOS23_TRACE_BOATJITTER (inert when unset).  Diagnoses the linked-play
-	// water/BOAT-level defect: enemy boats "shake in place" (snap backward then
-	// forward) ONLY on blue (connector/follower), never solo, never on red - so the
-	// artifact is in blue's ingest path and shows on fast entities.
-	//
-	// PHASE 1 (RE, see agent-log): the on-screen position of an actor-array entity
-	// is a LOCAL per-frame recompute (renderer 0x80089C78 rebuilds the object's
-	// +0x30/+0x34/+0x38 world position each frame from matrix*offset+base) of an
-	// INGESTED transform: the actor records at 0x802F4DB0 + slot*0x2B8 hold the
-	// coordinates that the WIRE opcodes write - op0x17/0x18/0x19 (full transform)
-	// -> record +0xA8/+0xAC/+0xB0 (s32 packed position vector), and op0x21-0x29 /
-	// 0x2A-0x33 (spawn/transform actor with 3 coords) -> record +0x1F4/+0x1F8/+0x1FC.
-	// So the position is BOTH locally recomputed AND ingest-driven; whether blue
-	// ALSO advances the boat with a local motion script (dual-writer, hyp B) vs
-	// merely holds/re-applies stale ingested coords (stale-replay, hyp A) is the
-	// empirical question this trace answers.  (op02 field A is a per-frame STATUS
-	// mirror, NOT a coordinate - not sampled.)
-	//
-	// METHOD (same per-vblank memory-sample + diff idiom as the OP20 ring trace):
-	// per vblank on the CONNECTOR/blue while staging mode 0x802F3FD0==2, scan the
-	// actor array, gate to live slots (status word at base+0x18 = 0x802F4DC8 +
-	// slot*0x2B8 < 0), and diff two candidate ingested position triples
-	// (A=+0x1F4/+0x1F8/+0x1FC, B=+0xA8/+0xAC/+0xB0) vs last vblank.  A REVERSAL =
-	// the frame-to-frame delta of a component flips sign vs the previous delta
-	// (|deltas| >= BJ_MIN_MOVE, to reject 1-LSB noise) - the actual "shake" signal.
-	// SOURCE tag is a per-vblank attribution: if the device rx-apply generation
-	// advanced during this vblank window (an ingest landed), the move is tagged RX
-	// (freshness = the last delivered frame's class, FRESH vs HEARTBEAT-REPLAY from
-	// the device bridge), else LOCAL (a local-sim advance with no ingest this
-	// window).  At vblank granularity a specific slot's write cannot be bound to a
-	// specific frame, but over the boat era ingests are frequent, so the
-	// REPLAY-vs-FRESH split ACROSS reversal frames is the A/B discriminator:
-	// reversals riding REPLAY deliveries => hyp A; reversals alternating
-	// LOCAL-forward / RX-FRESH-backward => hyp B.  Log-on-reversal + a 1/s status
-	// rail keeps the boat-area capture in the low-MB range (see the agent-log).
-	// MODEL PROVENANCE: Opus 4.8.  Experiment branch only - never merge to milestone.
-	static constexpr int BJ_SLOTS = 48;   // actor-array slots scanned (liveness-gated; 48*0x2B8 stays in RAM)
-	static constexpr s32 BJ_MIN_MOVE = 4; // min |delta| on a component to count as motion (reject LSB noise)
-	static constexpr int BJ_MAX_LINES_FRAME = 24; // per-vblank reversal-line safety cap
-	struct bj_slot
-	{
-		s32 v[6];       // last sampled components: 0..2 = A(+0x1F4/+0x1F8/+0x1FC), 3..5 = B(+0xA8/+0xAC/+0xB0)
-		s32 d[6];       // last frame-to-frame delta per component (for sign-flip reversal detection)
-		bool live;      // slot was live last vblank (delta basis valid)
-	};
-	bool m_bj_trace;                // env gate (driver side)
-	bool m_bj_have_prev;            // at least one prior sample taken
-	bj_slot m_bj_prev[BJ_SLOTS];    // per-slot previous sample
-	u32 m_bj_prev_rxgen;            // device rx_apply_gen at last vblank (ingest-this-window detector)
-	u32 m_bj_reversals;             // cumulative reversals (1/s status)
-	u32 m_bj_rx_moves;              // cumulative reversal-moves attributed to an RX delivery
-	u32 m_bj_local_moves;           // cumulative reversal-moves with no ingest this vblank
+	// Retained P055/P056/P059 actor-array knowledge (the BOATJITTER /
+	// BOATRENDER / POSCORR driver traces were removed in P072): actor array
+	// 0x802F4DB0 + slot*0x2B8 (guard word 0x802F4DC8); status/live word
+	// +0x18 < 0 = live (bit31 set = REMOTE/partner-owned); ingested position
+	// triples: op0x17/0x18/0x19 (full transform) -> +0xA8/+0xAC/+0xB0 (s32
+	// packed position vector) and op0x21-0x29 / 0x2A-0x33 (spawn/transform
+	// actor with 3 coords) -> +0x1F4/+0x1F8/+0x1FC; the RENDERED world pos
+	// +0x30/+0x34/+0x38 is rebuilt every frame by the object renderer
+	// 0x80089C78 (matrix(+0x3C/40/44) * record_offset + base, trunc.w.s to
+	// integer world coords); anim/orientation matrix word +0x3C, keyframe
+	// counter +0x1A (low halfword of the +0x18 word, big-endian layout);
+	// world-pos BASE +0xCC (type-1) / +0x80 (type-2) - numeric format + the
+	// renderer dispatch gate live in the retained P065 note below.  op02
+	// field A is a per-frame STATUS mirror, NOT a coordinate.  An entity's
+	// on-screen position is therefore BOTH locally recomputed AND
+	// ingest-driven - the dual-writer mechanism behind the remote-entity
+	// jitter (P055-P059 arc; P064 verdict: transport DONE at ~55 fresh/s,
+	// residual = viewer-side dual-writer, parked by user choice).
 
-	// P056 EXPERIMENT (branch patch/boat-render-trace, off patch/boat-jitter-trace):
-	// READ-ONLY per-vblank BLUE RENDERED-position + liveness trace (grep
-	// "BOATRENDER:"), env-gated by NAMCOS23_TRACE_BOATRENDER (inert when unset).
-	// REFINES P055: P055 watched the INGEST coordinate fields (+0xA8/+0x1F4) and
-	// caught only 17 reversals in ~7 min, 14/17 on EMPTY id=0000 slots - it traced
-	// the wire coords, not the position the eye sees.  P056 instead watches the
-	// RENDERED world position +0x30/+0x34/+0x38 (rebuilt every frame by the object
-	// renderer 0x80089C78 as matrix(+0x3C/40/44)*record_offset+base, then trunc.w.s
-	// to integer world coords), and FILTERS OUT empty slots (real id only), so it
-	// captures the actual visible shake.  Reuses the P055 device bridge (rx-apply
-	// generation + FRESH/HEARTBEAT-REPLAY classifier) verbatim for source attribution
-	// (the device arms that bridge on NAMCOS23_TRACE_BOATJITTER OR _BOATRENDER).
-	//
-	// PART 1 - rendered reversal (the visible shake): per vblank on the
-	// CONNECTOR/blue while staging mode 0x802F3FD0==2, scan the actor array
-	// 0x802F4DB0 + slot*0x2B8, gate to ACTIVE actors (status word +0x18 < 0 AND a
-	// real id, i.e. skip id=0000/ffff empty/placeholder slots), and diff the rendered
-	// world pos +0x30/+0x34/+0x38 vs last vblank.  A REVERSAL = a component's
-	// frame-to-frame delta flips sign vs the previous delta (|deltas| >= BR_MIN_MOVE)
-	// - the "snap backward then forward" the eye sees.  Each reversal is tagged RX
-	// (device rx-apply generation advanced this vblank window = an ingest landed;
-	// freshness = last delivered frame's class) vs LOCAL (no ingest this window), the
-	// same A/B discriminator P055 used: reversals riding REPLAY => stale-replay
-	// (hyp A); reversals splitting LOCAL-forward / RX-FRESH-backward => dual-writer
-	// (hyp B).
-	//
-	// PART 2 - liveness timeline (the disappearing red player + 1P tag): whenever an
-	// actor slot's +0x18 live flag TRANSITIONS (live->dead or dead->live) with a real
-	// id on either side, log one line with the same RX/LOCAL + fresh/replay
-	// attribution - revealing the slot whose liveness flickers on blue during the boat
-	// scene and whether an RX-fresh vs LOCAL write drives it.
-	//
-	// UNCERTAINTY (see agent-log): renderer 0x80089C78 holds +0x30/34/38 on the
-	// OBJECT INSTANCE whose +0x18 indexes the 0x802F4DB0 record table; the task's
-	// known-RE treats these 0x2B8-stride records as also carrying the rendered world
-	// pos at +0x30/34/38.  If the log shows large-magnitude coords that reverse often
-	// in the boat scene this is the visible field; if tiny/static it is not and the
-	// object-instance array must be found.  READ-ONLY.  MODEL PROVENANCE: Opus 4.8.
-	static constexpr int BR_SLOTS = 48;    // actor-array slots scanned (liveness-gated; 48*0x2B8 stays in RAM)
-	static constexpr s32 BR_MIN_MOVE = 4;  // min |delta| on a component to count as motion (reject LSB noise)
-	static constexpr int BR_MAX_LINES_FRAME = 32; // per-vblank line cap (reversals + liveness combined)
-	struct br_slot
-	{
-		s32 v[3];       // last rendered world pos +0x30/+0x34/+0x38 (X/Y/Z)
-		s32 d[3];       // last frame-to-frame delta per component (sign-flip reversal basis)
-		u32 id;         // last sampled id ((+0x1F0>>8)&0xffff) - for liveness id attribution
-		bool live;      // +0x18 < 0 last vblank
-		bool sampled;   // had a valid ACTIVE position sample last vblank (delta basis valid)
-	};
-	bool m_br_trace;                // env gate (driver side)
-	bool m_br_have_prev;            // at least one prior vblank scanned (liveness arm)
-	br_slot m_br_prev[BR_SLOTS];    // per-slot previous sample
-	u32 m_br_prev_rxgen;            // device rx_apply_gen at last vblank (ingest-this-window detector)
-	u32 m_br_reversals;             // cumulative rendered reversals (1/s status)
-	u32 m_br_rx_moves;              // cumulative reversal-moves attributed to an RX delivery
-	u32 m_br_local_moves;           // cumulative reversal-moves with no ingest this vblank
-	u32 m_br_live_transitions;      // cumulative liveness transitions logged
-
-	// P059 EXPERIMENT (branch patch/poscorr-trace, off patch/boat-render-trace):
-	// READ-ONLY per-vblank BLUE CORRECTION-CADENCE + LOCAL-DRIFT trace on the
-	// remote actor's world-pos BASE +0xCC (type-1) / +0x80 (type-2) - the FOUGHT
-	// FIELD the local-position-writer RE pinned (grep "POSCORR: rom").  Env-gated
-	// by NAMCOS23_TRACE_POSCORR (inert/byte-identical when unset), connector-gated
-	// (blue only), staging-mode-2 gated.  Serves FIX FAMILY B (make the transport
-	// deliver red's position corrections more often / in-order).  MODEL PROVENANCE:
-	// Opus 4.8.  Experiment branch only - never merge to milestone.
-	//
-	// WHY SAMPLING, NOT A WRITE-TAP (task-mandated decision, documented):  the ideal
-	// instrument is a memory write-tap on the actor array that logs the store PC to
-	// bucket each +0xCC write as INGEST (op4B/4C 0x800AF8E0) vs LOCAL (transform tick
-	// 0x80100014 / 0x8010C5B0 / lean 0x800FEB10).  It is IMPRACTICAL on this driver:
-	// the whole main RAM is registered add_fastram (machine_start ~line 10388), so
-	// under the DRC every kseg0 store bypasses the memory system entirely (no tap
-	// fires) AND mips3's exported PC is block-stale mid-store (see the P039/P040
-	// op6f-no394 tap notes above).  The only sound tap forces the INTERPRETER
-	// (set_force_no_drc), which the P040 run measured at ~1.56x wall slowdown - and,
-	// worse for a DIAGNOSTIC, forcing the interpreter perturbs the very CPU timing /
-	// heartbeat cadence this trace is meant to measure (Heisenberg; establishment is
-	// fragile - 16 ms broke it).  So per the task's fallback clause we SAMPLE the
-	// base per vblank and KEY the INGEST/LOCAL attribution on the device rx-apply
-	// generation bridge (the same bridge P055/P056 use): a base move in a vblank
-	// where rx_apply_gen advanced (an op4B/4C snapshot was delivered) is a CORRECTION;
-	// a base move with no ingest this window is LOCAL DRIFT.  Limitation (same as
-	// P055): rx_apply_gen is GLOBAL not per-slot, so within one vblank a correction
-	// to actor A and local drift on actor B both read "ingest window" - acceptable
-	// because we aggregate over the still-crouch era where the answer is a RATE, not
-	// a per-frame attribution.
-	//
-	// The base is read as an IEEE float (0x80100014 composes it via the FPU; the
-	// renderer trunc.w.s's it into the integer +0x30 P056 sampled), guarded by
-	// std::isfinite so a non-float word can never poison the magnitude.  Per remote
-	// slot we track: the gap (frames) between consecutive INGEST corrections (a
-	// histogram => steady ~HB vs bursty-with-long-gaps), and the LOCAL drift
-	// magnitude that accumulates on +0xCC between corrections (how far blue's local
-	// prediction wanders before the next snap corrects it) - the two numbers the
-	// B verdict needs: current correction rate (Hz) and how much correction is owed.
-	static constexpr int PC_SLOTS = 48;             // actor-array slots scanned (remote/live-gated; 48*0x2B8 in RAM)
-	static constexpr float PC_MIN_MOVE = 0.125f;    // min |d base| (float world units) counted as motion (reject FPU LSB noise)
-	static constexpr float PC_SANE_MAX = 1.0e9f;    // reject an absurd delta (word was not actually a base float this frame)
-	static constexpr int PC_MAX_LINES_FRAME = 16;   // per-vblank correction-line cap
-	// P061 RIDER (branch patch/tx-complete-irq): per-1/s-window cap on the
-	// anim-while-static lines (the discriminator needs existence + rough rate,
-	// not every event - the digest carries the counts).
-	static constexpr int PC_ANIM_MAX_LINES_WIN = 2;
-	struct pc_slot
-	{
-		float cc[3];        // +0xCC/+0xD0/+0xD4 last sample (type-1 world base, IEEE float)
-		float w80[3];       // +0x80/+0x84/+0x88 last sample (type-2 world base, IEEE float)
-		bool  sampled;      // had a valid remote sample last vblank (delta basis valid)
-		bool  corr_seen;    // last_corr_frame valid (>=1 correction seen on this slot)
-		u32   last_corr_frame; // frame of the last INGEST correction (gap basis)
-		float drift_accum;  // sum |local d base| since the last correction (pre-snap drift)
-		float drift_max;    // peak drift excursion reached since the last correction
-		u32   anim;         // P061 RIDER: +0x3C anim/orientation matrix word last sample (raw)
-		u16   kf;           // P061 RIDER: +0x1A keyframe counter last sample (low half of the +0x18 word)
-		bool  anim_sampled; // P061 RIDER: anim/kf delta basis valid
-	};
-	bool m_pc_trace;                // env gate (driver side)
-	bool m_pc_pos_have_prev;        // >=1 prior vblank sampled (POSCORR; m_pc_have_prev is the P044 PLAYCLOCK flag)
-	pc_slot m_pc_prev[PC_SLOTS];    // per-slot previous sample + drift/gap state
-	u32 m_pc_prev_rxgen;            // device rx_apply_gen at last vblank (ingest-this-window detector)
-	u32 m_pc_corr_win;              // INGEST-attributed base corrections this 1/s window
-	u32 m_pc_corr_fresh_win;        // of those, device-classified FRESH (new positions)
-	u32 m_pc_corr_replay_win;       // of those, heartbeat REPLAY (stale re-apply)
-	u32 m_pc_local_events_win;      // LOCAL drift events (base moved, no ingest) this window
-	float m_pc_local_sum_win;       // sum of local drift magnitude this window
-	float m_pc_drift_max_seen;      // largest single pre-snap drift excursion (cumulative)
-	u32 m_pc_corr_tot;              // cumulative corrections
-	float m_pc_snap_sum;            // sum of correction snap magnitude (cumulative, for a mean)
-	u32 m_pc_gap_hist[6];           // inter-correction gap buckets: [1][2][3-4][5-8][9-16][17+] frames
-	u32 m_pc_remote_live_last;      // remote/live slot count last vblank (status context)
-
-	// P061 RIDER (branch patch/tx-complete-irq, audit D): STILL-SHUDDER
-	// ANIM-LAYER DISCRIMINATOR - READ-ONLY, same NAMCOS23_TRACE_POSCORR gate
-	// (no new env).  P059's crouch-still window showed the fought base +0xCC
-	// utterly quiet while the user-reported still-shudder may live in the
-	// ANIM/POSE layer (keyframe advancer 0x8008A5D8 -> object matrix; the
-	// `animMatrix * component` term the +0xCC arc never measured).  Alongside
-	// the +0xCC/+0x80 sampling, diff per remote slot per vblank: the anim/
-	// orientation matrix word +0x3C (raw u32) and the keyframe counter +0x1A
-	// (low halfword of the +0x18 word - big-endian layout).  A change in a
-	// vblank where the BASE was static (no move > PC_MIN_MOVE on either base)
-	// = pose-layer motion with the base pinned - logged (capped
-	// PC_ANIM_MAX_LINES_WIN/s) + counted.  During the still-crouch repro:
-	// shudder visible while anim/kf churn and +0xCC static => pose layer
-	// CONFIRMED (its own fix track); anim/kf also quiet => the shudder is not
-	// in these words either (widen the probe).  Digest: 1/s 'POSCORR:
-	// anim-status' line.  MODEL PROVENANCE: Fable 5.
-	u32 m_pc_anim_chg_win;          // window: remote-slot vblanks where +0x3C changed
-	u32 m_pc_kf_chg_win;            // window: remote-slot vblanks where +0x1A changed
-	u32 m_pc_anim_ccstatic_win;     // window: anim/kf changed while BOTH bases static (the discriminator signal)
-	u32 m_pc_anim_lines_win;        // window: anim-while-static lines emitted (cap PC_ANIM_MAX_LINES_WIN)
-
-	// P060 EXPERIMENT (branch patch/hb-phase-aware, off patch/poscorr-trace):
-	// driver-side arm for the PHASE-AWARE heartbeat token cadence - env
-	// NAMCOS23_PATCH_HB_PHASE_AWARE=<fast_ms> (inert/byte-identical when unset).
-	// The DEVICE (namco_c139) reads the SAME env in device_start, validates the
-	// value and owns the cadence choice + debounce; the driver's only job is
-	// the MODE SIGNAL: each vblank, read the staging mode word 0x802F3FD0
-	// (READ-ONLY - only the driver maps m_mainram) and push (mode == 2) to the
-	// C139 via set_ingame(), the same driver->device bridge idiom as
-	// set_local_counter / set_linked_gate_txonly.  Armed on BOTH cabs: the
-	// heartbeat is the pacing TOKEN that clears the PEER's reg5 stop-and-wait
-	// (P050/P059), so blue's cadence releases RED's emits and vice versa - a
-	// one-sided arm only speeds one direction.  MODEL PROVENANCE: Fable 5.
-	// Experiment branch only - never merge to milestone.
-	bool m_patch_hb_phase_aware;    // env NAMCOS23_PATCH_HB_PHASE_AWARE (driver push arm)
-
-	// P061 EXPERIMENT (branch patch/tx-complete-irq, off patch/hb-phase-aware):
-	// driver-side arm for the C422 TX-COMPLETE dispatch model - env
-	// NAMCOS23_PATCH_TX_COMPLETE_IRQ (inert/byte-identical when unset).  The
-	// DEVICE (namco_c139) reads the SAME env in device_start and owns the
-	// mechanism (synchronous dispatch of a freshly staged standalone TX = the
-	// chip's txsize_commit trigger; see the device member block); the driver's
-	// only job is the SAME mode signal P060 built: each vblank, read the
-	// staging mode word 0x802F3FD0 (READ-ONLY) and push (mode == 2) to the C139
-	// via set_ingame() - the device debounces and activates the dispatch model
-	// only in stable mode-2, so op55 establishment keeps the stock reg5
-	// stop-and-wait untouched.  Armed on BOTH cabs (each cab's own emits are
-	// released by its own TX completing - no peer dependence).
-	// MODEL PROVENANCE: Fable 5.  Experiment branch only - never merge.
-	bool m_patch_tx_complete_irq;   // env NAMCOS23_PATCH_TX_COMPLETE_IRQ (driver push arm)
-
-	// P063 EXPERIMENT (branch patch/tx-complete-v2, off patch/txstage-trace):
+	// P063 (branch patch/tx-complete-v2, off patch/txstage-trace):
 	// driver-side arm for the P062-measured TX-COMPLETE RELEASE v2 - env
 	// NAMCOS23_PATCH_TX_COMPLETE_V2 (inert/byte-identical when unset).  The
 	// DEVICE (namco_c139) reads the SAME env in device_start and owns the
@@ -3467,109 +2646,31 @@ protected:
 	// set_ingame() - the device debounces and activates only in stable
 	// mode-2, so op55 establishment keeps the stock reg5 stop-and-wait
 	// untouched.  Armed on BOTH cabs (each cab self-releases).
-	// MODEL PROVENANCE: Fable 5.  Experiment branch only - never merge.
+	// MODEL PROVENANCE: Fable 5.
 	bool m_patch_tx_complete_v2;    // env NAMCOS23_PATCH_TX_COMPLETE_V2 (driver push arm)
 
-	// P065 EXPERIMENT (branch patch/corr-smooth, off patch/tx-complete-v2):
-	// VIEWER-SIDE INGEST-CORRECTION BLENDING for remote entities - env
-	// NAMCOS23_PATCH_CORR_SMOOTH (inert/byte-identical when unset).  The P064
-	// verdict: the transport is done (everything red composes is dispatched,
-	// arrives and is delivered), but a remote-viewed boat gets ~0.17 position
-	// corrections/s against the ROM's 60 fps LOCAL writer of the same field -
-	// so each correction lands as a visible SNAP (hold-then-teleport).  A bare
-	// pin (hold the base at the last ingested value) trades 60 Hz jitter for
-	// hold-then-teleport every few seconds, so instead we KEEP the ROM's local
-	// prediction and BLEND each ingested correction over ~100-200 ms: when a
-	// correction of delta D lands, immediately rewrite the base back to
-	// (new - D) + D/N and release the remainder in ~D/N steps over the next
-	// N-1 vblanks (N = NAMCOS23_PATCH_CORR_SMOOTH_FRAMES, default 8 ~ 133 ms).
-	// The local writer keeps advancing from the blended base each frame - that
-	// is the DESIGN (local prediction + gradual error correction), the same
-	// contract the real C139 link satisfied by correcting every frame.
-	//
-	// NUMERIC FORMAT (phase-1 verification, 2026-07-13, full.txt): the world-
-	// pos base at record+0xCC/+0xD0/+0xD4 (type-1) and +0x80/+0x84/+0x88
-	// (type-2) is a SIGNED 32-BIT INTEGER triple, NOT an IEEE float and NOT a
-	// packed 16.16 pair.  Three independent disasm sites prove it:
-	//   - renderer 0x80089DF8/0x80089E74/0x80089EF0: lwc1 f0,0/4/8($a1) then
-	//     cvt.s.w f0,f0 - the raw word is CONVERTED word->single, i.e. the
-	//     memory word is an integer ($a1 = record+0xCC type-1 / +0x80 type-2);
-	//   - writers 0x8010C5B0 (@0x8010C6E0 trunc.w.s + swc1 ->+0x80/84/88) and
-	//     0x80100014 (@0x80100454/4D0/54C trunc.w.s + swc1 ->+0xCC/D0/D4):
-	//     both stores are float results TRUNCATED TO INTEGER words;
-	//   - 0x800FEB10 (@0x800FEB48-58): lw/lw/subu on the position words - the
-	//     ROM itself does raw s32 SUBTRACTION on this field (then cvt.s.w's
-	//     the difference).  So s32 delta/divide/add blend math below is the
-	//     exact arithmetic the ROM already performs.  This also explains the
-	//     P059 caveat: reading these words as IEEE floats gave garbage
-	//     magnitudes because integers like 0x30BD0000 decode as denormal-ish
-	//     floats.  As a residual rail (the task's fallback), any slot whose
-	//     base word exceeds CS_SANE_ABS in magnitude (implausible world
-	//     coordinate; observed live values are ~0x2BAxxxxx..0x30Bxxxxx, well
-	//     inside) is PASSED THROUGH unsmoothed and counted format_reject.
-	//
-	// MECHANISM (per-vblank, BOTH cabs - every cab is a remote-viewer of the
-	// peer's entities; red sees blue-owned enemies rubberband too; placed
-	// AFTER the P059 POSCORR scan so the trace samples the RAW ROM values and
-	// its correction counts stay comparable - we then refresh POSCORR's
-	// per-slot cache with what we wrote so it never attributes our own blend
-	// steps as ROM movement).  Walk the actor array 0x802F4DB0 + slot*0x2B8
-	// (CS_SLOTS), gate to REMOTE (+0x18 bit31 set) + valid (+0x08 halfword
-	// bit 0x8000 clear) + type 1/2 (+0x0A halfword selects WHICH base triple
-	// per the renderer's own dispatch).  Per slot track the triple as of the
-	// end of last vblank (seen = post-blend), the un-released remainder
-	// (rem), and frames_left.  DETECT a correction: the device rx-apply gen
-	// advanced this vblank (an ingest was delivered - the same P055/P056/P059
-	// bridge) AND the slot's watched base moved >= CS min-delta (word-compare
-	// first, then s32 decode).  On detect: if any |D| component exceeds the
-	// teleport threshold (NAMCOS23_PATCH_CORR_SMOOTH_MAXD) DO NOT BLEND -
-	// teleports/respawns/scene changes must stay instant (snap_through);
-	// otherwise (re)start the blend: rem = D, frames_left = N (a NEWER
-	// correction mid-blend RETARGETS from the current displayed value - the
-	// old remainder is subsumed because the ROM's new word already embodies
-	// the full authoritative position).  Each vblank with frames_left > 0:
-	// step = rem / frames_left (s32 division; the last frame applies the
-	// exact remainder so the blend converges precisely on the ROM's current
-	// word), write base = cur - rem + step.  Because the step is applied
-	// RELATIVE to the freshly-read current word, a local-writer advance (or a
-	// full re-derivation) between our writes is preserved, never forced back
-	// - the "re-detect rather than force" rule.  SAFETY RAILS: position words
-	// ONLY (+0xCC/+0xD0/+0xD4 or +0x80/+0x84/+0x88 per the type gate) - never
-	// status/liveness words; <= 3 word-writes per slot per vblank (<= 3 *
-	// CS_SLOTS total); ALWAYS fail toward stock snap behavior - slot-id
-	// change (+0x9A, the op4B/4C lookup key = reuse), type change, remote/
-	// valid-bit loss, staging-mode-2 loss, out-of-range current or computed
-	// value each reset the slot to passive tracking (the ROM's value stands).
-	// One-shot banner at machine_start; 1/s "CORR_SMOOTH: status" rail.
-	// MODEL PROVENANCE: Fable 5.  Experiment branch only - never merge.
-	static constexpr int CS_SLOTS = 48;             // actor-array slots scanned (same array/stride as POSCORR)
-	static constexpr s32 CS_SANE_ABS = 0x40000000;  // |base word| beyond this = not a plausible world coord (format rail)
-	struct cs_slot
-	{
-		bool active;        // tracked (remote+valid+type-sane) last vblank; seen[] is a valid delta basis
-		u8   type;          // record type (1 -> +0xCC triple, 2 -> +0x80 triple) at last sample
-		u16  id;            // actor id (+0x9A, the op4B/4C snapshot lookup key) at last sample - slot-reuse detector
-		u8   frames_left;   // blend frames remaining (0 = no active blend)
-		s32  seen[3];       // watched base triple as of the END of last vblank (post any blend write)
-		s32  rem[3];        // un-released correction remainder (target - displayed); 0 when idle
-	};
-	bool m_cs_on;                   // env gate NAMCOS23_PATCH_CORR_SMOOTH
-	u8  m_cs_frames;                // blend length N (env _FRAMES, default 8, clamped 3..15)
-	s32 m_cs_maxd;                  // teleport threshold per component (env _MAXD, raw s32 units)
-	s32 m_cs_mind;                  // detection epsilon per component (env _MIND, raw s32 units, default 1)
-	cs_slot m_cs_slot[CS_SLOTS];    // per-slot blend state
-	bool m_cs_have_prev;            // >=1 prior vblank sampled (rxgen delta basis valid)
-	u32 m_cs_prev_rxgen;            // device rx_apply_gen at last vblank (ingest-this-window detector)
-	bool m_cs_mode2_prev;           // staging mode was 2 last vblank (loss -> full state reset)
-	u32 m_cs_blends_win;            // 1/s window: blends started (correction detected + accepted)
-	u32 m_cs_steps_win;             // 1/s window: blend steps applied (slot-vblanks with a write pass)
-	u32 m_cs_snapthru_win;          // 1/s window: corrections passed through as instant snaps (>MAXD / reuse / rail)
-	u32 m_cs_fmtrej_win;            // 1/s window: slots skipped by the CS_SANE_ABS format rail
-	u32 m_cs_blends_tot;            // cumulative blends started
-	u32 m_cs_snapthru_tot;          // cumulative snap-throughs
-	u32 m_cs_fmtrej_tot;            // cumulative format rejects
+	// Retained P065 phase-1 knowledge (the viewer-side correction-smooth
+	// blend itself was never adopted - visually inert in P065, placement
+	// probe parked - and removed in P072):
+	// NUMERIC FORMAT (verified 2026-07-13, full.txt): the remote-actor
+	// world-pos base at record+0xCC/+0xD0/+0xD4 (type-1) and
+	// +0x80/+0x84/+0x88 (type-2) is a SIGNED 32-BIT INTEGER triple, NOT an
+	// IEEE float and NOT a packed 16.16 pair.  Three independent disasm
+	// proofs: renderer 0x80089DF8/0x80089E74/0x80089EF0 lwc1 then cvt.s.w
+	// (the raw memory word is converted word->single = an integer); writers
+	// 0x8010C5B0 (@0x8010C6E0 -> +0x80/84/88) and 0x80100014
+	// (@0x80100454/4D0/54C -> +0xCC/D0/D4) trunc.w.s + swc1 (float results
+	// truncated to integer words); 0x800FEB10 (@0x800FEB48-58) raw lw/lw/subu
+	// s32 subtraction on the position words.  Reading these words as IEEE
+	// floats gives garbage magnitudes (the P059 caveat - integers like
+	// 0x30BD0000 decode as denormal-ish floats); live values run
+	// ~0x2BAxxxxx..0x30Bxxxxx.  The renderer's own dispatch gate
+	// (0x80089CD4-0x80089D68): REMOTE = +0x18 bit31 set, valid = +0x08
+	// halfword bit 0x8000 clear, record type 1/2 = +0x0A halfword - the type
+	// selects WHICH base triple the renderer adds (+0xCC type-1 / +0x80
+	// type-2); +0x9A is the actor id (the op4B/4C snapshot lookup key).
 
-	// P048 EXPERIMENT (branch patch/reaper-patience, off patch/anchor-lifecycle):
+	// P048 (branch patch/reaper-patience, off patch/anchor-lifecycle):
 	// widen the ROM's bit31 snapshot-timeout REAPER threshold - the ONE-WORD fix
 	// for the remaining anchor-death skip classes (P047 static RE) - env
 	// NAMCOS23_PATCH_REAPER_PATIENCE (inert unset; VALUE-CHECKED: only "1" and
@@ -3628,22 +2729,23 @@ protected:
 	// the word (the poke lands within one vblank of that); mips3 has no
 	// store-triggered invalidation and namcos23 runs loose verify, so a block
 	// compiled inside a residual re-copy window would embed the STOCK 17-tick
-	// immediate = FAIL TO STOCK only (no corruption; the 1/s word rail plus
-	// the run's OP20 reg-to-kill offset census - the +[15,18] f ring-kill
-	// class MUST collapse to 0 - expose it); soft reset flushes the whole DRC
+	// immediate = FAIL TO STOCK only (no corruption; the 1/s guard's re-poke
+	// line records any re-materialization - the OP20 reg-to-kill offset
+	// census that once backstopped this was removed in P072); soft reset
+	// flushes the whole DRC
 	// cache (device_reset); the 1/s guard re-pokes on re-materialization
 	// (logged + counted, expect 0).  Both cabs run the same env (bit31
 	// carriers exist on both sides: every slave-side allocator create, plus
 	// remote-designated op-0x2E children on either cab).  Counters
 	// diagnostics-only, not save_item'd (any save/load state converges:
 	// word == original -> poke/re-poke path; word == patched -> nothing to
-	// do).  Experiment branch only - never merge to milestone.
+	// do).
 	int m_patch_reaper_patience;    // 0 = inert; 1 = imm 0x11->0x1F (31 ticks); 2 = imm 0x11->0x20 (reaper OFF - reserve)
 	bool m_rpp_poked;               // one-shot: the widened immediate is in RAM
 	bool m_rpp_refused;             // one-shot: ROM-revision guard tripped (unexpected nonzero word) - inert
 	u32 m_rpp_repokes;              // guard re-pokes after re-materialization (expect 0)
 
-	// P050 EXPERIMENT (branch patch/single-burst-pump, off patch/reaper-patience):
+	// P050 (branch patch/single-burst-pump, off patch/reaper-patience):
 	// the SINGLE-BURST PUMP - the ONE-WORD ROM half of the transport fix for the
 	// remaining top defects (P049 static RE).  MODEL PROVENANCE: Opus 4.8.
 	//
@@ -3691,21 +2793,21 @@ protected:
 	// poke lands), so the DRC compiles the pump block from the already-poked RAM;
 	// mips3 has no store-triggered invalidation and namcos23 runs loose verify,
 	// so a block compiled inside a residual re-copy window would embed the STOCK
-	// 0x100 quantum = FAIL TO STOCK only (no corruption; the run's own falsifier
-	// is the tell - BURST_QUANTUM poked=1 but the device still logs 255-hw chunk
-	// trains / single_burst_tx stays 0 in fights => the compiled block is stale).
+	// 0x100 quantum = FAIL TO STOCK only (no corruption; the behavioral tell is
+	// the fight-era frame rate staying in the chunked 5.5-11/s band - the
+	// device-side chunk-train logs and single_burst_tx counter that once
+	// exposed this directly were removed in P072 phase C).
 	// Soft reset flushes the whole DRC cache (device_reset); the 1/s guard
 	// re-pokes on re-materialization (logged + counted, expect 0).  Both cabs run
 	// the same env (both compose+chunk).  On ANY other nonzero word: one-shot
 	// REFUSE (ROM-revision guard).  Counters diagnostics-only, not save_item'd
 	// (converges: word == original -> poke path; word == patched -> nothing).
-	// Experiment branch only - never merge to milestone.
 	bool m_patch_burst_quantum;    // env NAMCOS23_PATCH_BURST_QUANTUM (driver poke arm)
 	bool m_bq_poked;               // one-shot: the widened immediate is in RAM
 	bool m_bq_refused;             // one-shot: ROM-revision guard tripped (unexpected nonzero word) - inert
 	u32 m_bq_repokes;              // guard re-pokes after re-materialization (expect 0)
 
-	// P066 EXPERIMENT (branch patch/link-wait, off milestone/phase10-linkplay):
+	// P066 (branch patch/link-wait, off milestone/phase10-linkplay):
 	// env-extendable PARTNER-SEARCH countdown - the ONE-WORD seed widen for the
 	// boot "NETWORK CHECK" join window (two-PC WiFi sessions may need more than
 	// the ROM's ~30 s to get both cabs up).  MODEL PROVENANCE: Fable 5.
@@ -3769,8 +2871,7 @@ protected:
 	// IS the tell: 300 instead of units).  Soft reset flushes the whole DRC
 	// cache (device_reset); the 1/s guard re-pokes on re-materialization.
 	// Counters diagnostics-only, not save_item'd (converges: word == original
-	// -> poke/re-poke path; word == patched -> nothing to do).  Experiment
-	// branch only - never merge to milestone.
+	// -> poke/re-poke path; word == patched -> nothing to do).
 	int m_patch_link_wait_units;   // 0 = inert; else the widened seed in ROM units (= env seconds * 10)
 	bool m_lw_poked;               // one-shot: the widened immediate is in RAM
 	bool m_lw_refused;             // one-shot: ROM-revision guard tripped (unexpected nonzero word) - inert
@@ -6969,34 +6070,21 @@ void namcos23_state::vblank(int state)
 {
 	if (state)
 	{
-		// TEMP DEBUG (phase 9d): poll link-state vars + timeout counter.
-		// add_fastram bypasses install_write_tap, so polling is the only way
-		// to observe these writes. REMOVE BEFORE COMMIT.
-		static u16 last_link = 0xffff;
-		static u16 last_timeout = 0xffff;
-		static u16 last_succ = 0xffff;
+		// Phase 9d: poll the ROM's state-machine call counter each vblank
+		// (add_fastram polling idiom - see the phase-9d note in machine_start).
+		// The on-change link/timeout/succ diagnostic that shared this poll was
+		// removed in P072 phase C.
 		static u32 frame_count = 0;
 		++frame_count;
-		u16 const cur_link    = u16(m_mainram[0x002CEDDC / 4] >> 16);
-		u16 const cur_timeout = u16(m_mainram[0x002F3504 / 4] >> 16);
-		u16 const cur_succ    = u16(m_mainram[0x002CEDE8 / 4] >> 16); // gp+0x75C8 validator success counter
 		u16 const cur_counter = u16(m_mainram[0x002CEDD8 / 4] >> 16); // gp+0x75B8 state-machine call counter
-		if (cur_link != last_link || cur_timeout != last_timeout || cur_succ != last_succ)
-		{
-			logerror("namcos23: phase9 frame=%u link=%04x timeout=%04x succ=%04x counter=%u\n",
-					frame_count, cur_link, cur_timeout, cur_succ, cur_counter);
-			last_link = cur_link;
-			last_timeout = cur_timeout;
-			last_succ = cur_succ;
-		}
 
-		// PHASE 9D: push our state counter to C139 every frame so the
-		// heartbeat replay can stamp current bytes 0-1.  REMOVE BEFORE COMMIT.
+		// Phase 9d: push our state counter to C139 every frame so the
+		// heartbeat replay can stamp current bytes 0-1.
 		if (m_c139)
 			m_c139->set_local_counter(cur_counter);
 
-		// P001 EXPERIMENT (H1 "keepalive keystone", cherry-picked from
-		// patch/keepalive-floor onto patch/continuous-arm): floor the in-game
+		// P001 (H1 "keepalive keystone", branch
+		// patch/keepalive-floor): floor the in-game
 		// link keepalive word 0x802F3FD8 while linked gameplay is staged
 		// (mode word 0x802F3FD0 == 2).  ROM provenance (full.txt, all word
 		// lw/sw): RX service 0x800B2968 gates on the mode word (lw/bne
@@ -7017,8 +6105,7 @@ void namcos23_state::vblank(int state)
 		// conversion as the phase 9d taps above.  +0x370 words: record 0 =
 		// 0x802F43D0, record 1 = 0x802F4844 (0x802F4060 + idx*0x474 + 0x370);
 		// the partner is record 1 - [gp+0x7608], gp = 0x802C7820 (boot code
-		// 0x80000384-88), so gp+0x7608 = 0x802CEE28.  Experiment branch only -
-		// never merge to milestone.
+		// 0x80000384-88), so gp+0x7608 = 0x802CEE28.
 		if (m_patch_keepalive_floor)
 		{
 			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
@@ -7033,1382 +6120,42 @@ void namcos23_state::vblank(int state)
 						frame_count, machine().time().as_double(), keepalive, m_mainram[0x002F3FD8 / 4],
 						rec0_flags, rec1_flags, local_idx);
 			}
-			if (frame_count % 60 == 0)
-				logerror("KEEPALIVE_FLOOR: status frame=%u mode=%u keepalive=%u rec0+0x370=%08x rec1+0x370=%08x localidx=%u\n",
-						frame_count, staging_mode, m_mainram[0x002F3FD8 / 4], rec0_flags, rec1_flags, local_idx);
 		}
 
-		// P002 EXPERIMENT (H2 "drift lockstep", branch patch/vblank-lockstep):
-		// 1/s status tap.  Per vblank, accumulate the max of the ROM's
-		// frame-drift word 0x802F3504 (= cur_timeout sampled by the phase 9d
-		// tap above; >= 0x11 declares the link idle and clears the freshness
-		// byte 0x802F3502) and the min of the keepalive word 0x802F3FD8 over
-		// mode-2 samples (staging mode word 0x802F3FD0 == 2 = linked
-		// gameplay); every 60 vblanks emit one status line including the
-		// token/stall counters from the C139 barrier.  Same m_mainram[phys/4]
-		// word idiom as the phase 9d tap and the P001 block.  Experiment
-		// branch only - never merge to milestone.
-		if (m_patch_vblank_lockstep)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4]; // 0x802F3FD8
-			if (cur_timeout > m_lockstep_tap_max_drift)
-				m_lockstep_tap_max_drift = cur_timeout;
-			if (staging_mode == 2)
-			{
-				++m_lockstep_tap_mode2_samples;
-				if (keepalive < m_lockstep_tap_min_keepalive)
-					m_lockstep_tap_min_keepalive = keepalive;
-			}
-			if (frame_count % 60 == 0)
-			{
-				namco_c139_device::lockstep_stats const st =
-						m_c139 ? m_c139->get_lockstep_stats() : namco_c139_device::lockstep_stats{};
-				// min keepalive logged as -1 when no mode-2 vblank fell in this window
-				int const minka = m_lockstep_tap_mode2_samples ? int(m_lockstep_tap_min_keepalive) : -1;
-				logerror("VBLANK_LOCKSTEP: status frame=%u t=%.3fs mode=%u maxdrift=%04x minka=%d mode2=%u tok_tx=%u tok_rx=%u local=%u peer=%u stalls=%u timeouts=%u stall_ms=%u susp=%u\n",
-						frame_count, machine().time().as_double(), staging_mode,
-						m_lockstep_tap_max_drift, minka, m_lockstep_tap_mode2_samples,
-						st.tokens_tx, st.tokens_rx, st.local_frame, st.peer_token,
-						st.stall_events, st.stall_timeouts, unsigned(st.stall_us / 1000),
-						st.suspended ? 1 : 0);
-				m_lockstep_tap_max_drift = 0;
-				m_lockstep_tap_min_keepalive = 0xffffffff;
-				m_lockstep_tap_mode2_samples = 0;
-			}
-		}
-
-		// P002 EXPERIMENT (branch patch/vblank-lockstep): per-vblank
-		// frame-token send + bounded barrier stall.  Self-gated inside the
-		// device on NAMCOS23_PATCH_VBLANK_LOCKSTEP - inert when unset.
+		// Per-vblank frame-token send + bounded barrier stall [P002].
+		// Self-gated inside the device on NAMCOS23_PATCH_VBLANK_LOCKSTEP -
+		// inert when unset.  (The driver-side 1/s drift/keepalive status tap
+		// that lived here was removed in P072 phase C.)
 		if (m_c139)
 			m_c139->vblank_tick();
 
-		// P021 EXPERIMENT (branch patch/linked-gate-tx-only): push the WIRE-ONLY
-		// 0x6000 advertise gate to the device every vblank.  Only the driver can
-		// read the staging mode word (0x802F3FD0) and the env arm; the device
-		// performs the OR-only op55 wire-flag injection in emit_tx_frame.  This is
-		// a READ-ONLY mode-word read + a push: it does NOT write the LOCAL +0x370
-		// record (the whole point of P021 vs P020 - the live record stays clean so
-		// the gun-actor 0x80013644 never sees 0x2000).  Pushed even when not armed
-		// (the device stays inert), so the gate tracks mode==2 transitions exactly.
-		// Experiment branch only - never merge to milestone.
-		if (m_c139 && m_patch_linked_gate_txonly)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0 (READ-ONLY)
-			m_c139->set_linked_gate_txonly(true, staging_mode == 2);
-		}
-
-		// P060 EXPERIMENT (branch patch/hb-phase-aware): push the staging-phase
-		// signal to the device every vblank.  Only the driver can read the
-		// staging mode word (0x802F3FD0, READ-ONLY here); the device debounces
-		// (>= 60 consecutive mode-2 vblanks -> FAST heartbeat token cadence,
-		// SAFE immediately on any non-mode-2 vblank) and its heartbeat re-arm
-		// sites pick the cadence via hb_cadence_effective_ms().  Pushed on BOTH
-		// cabs - the token that releases RED's emits is BLUE's heartbeat and
-		// vice versa.  No RAM write, no regs touch - a read + a bool push.
-		// Experiment branch only - never merge to milestone.
-		// P061 (branch patch/tx-complete-irq): the same push also feeds the
-		// TX-complete dispatch model's mode-2 gate (the device debounces once,
-		// both consumers read the shared state) - so push when EITHER is armed.
-		// P063 (branch patch/tx-complete-v2): third consumer, same shared
-		// debounce - push when ANY of the three is armed.
-		if (m_c139 && (m_patch_hb_phase_aware || m_patch_tx_complete_irq
-				|| m_patch_tx_complete_v2))
+		// Push the staging-phase signal to the device every vblank (P060-era
+		// plumbing, retained as shared infrastructure).  Only the driver can
+		// read the staging mode word (0x802F3FD0, READ-ONLY here); the device
+		// debounces (>= 60 consecutive mode-2 vblanks -> stable in-game,
+		// dropped immediately on any non-mode-2 vblank).  No RAM write, no
+		// regs touch - a read + a bool push.  Consumer: the device's P063
+		// TX-complete release v2 mode-2 gate.
+		if (m_c139 && m_patch_tx_complete_v2)
 		{
 			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0 (READ-ONLY)
 			m_c139->set_ingame(staging_mode == 2, staging_mode);
 		}
 
-		// P003 EXPERIMENT (H3 "round-start arming race", branch
-		// patch/round-start-arm): MAME-side partner re-arm.  ROM provenance
-		// (full.txt via the 2026-06-10 investigation log): round-start
-		// 0x80013058 samples the keepalive word 0x802F3FD8 ONCE (blez
-		// 0x8001313C) and only then ORs bit 0x40000000 ("ingest armed") into
-		// the partner record's +0x370 word; the COM-fallback 0x800B2A58-98
-		// clears bits 0x40000000|0x2000 whenever the keepalive drains, and
-		// NO ROM path re-arms mid-stage (refill 0x800B29E8 / top-up
-		// 0x80023840-58 touch only the counter; op55 / the 0x80020xxx
-		// handshake never run mid-stage).  So: whenever the keepalive
-		// transitions 0 -> positive between vblank samples while linked
-		// gameplay is staged (mode word 0x802F3FD0 == 2), re-set bit
-		// 0x40000000 on the partner record so op02 coordinate import (gate
-		// 0x800AB3B8-C4) resumes.  Addresses (same as the P001 block):
-		// +0x370 words rec0 = 0x802F43D0, rec1 = 0x802F4844 (0x802F4060 +
-		// idx*0x474 + 0x370); partner = record 1 - [gp+0x7608], gp+0x7608 =
-		// 0x802CEE28 (gp = 0x802C7820).  Read-only observability: bit 0x2000
-		// ("remote-controlled / link-alive") transitions on either record,
-		// and partner +0x370 low-24 changes (op02 ingest evidence, ledger
-		// P003) counted into a 1/s status line.  Experiment branch only -
-		// never merge to milestone.
-		if (m_patch_round_start_arm)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4]; // 0x802F3FD8
-			u32 const rec0_flags   = m_mainram[0x002F43D0 / 4]; // record 0 +0x370
-			u32 const rec1_flags   = m_mainram[0x002F4844 / 4]; // record 1 +0x370
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			bool const partner_is_rec1 = (local_idx == 0);
-			offs_t const partner_word = partner_is_rec1 ? (0x002F4844 / 4) : (0x002F43D0 / 4);
-
-			if (m_rsa_have_prev)
-			{
-				// Keepalive refill edge (0 -> positive) in linked gameplay:
-				// re-arm the partner's ingest bit.
-				if (staging_mode == 2 && m_rsa_prev_keepalive == 0 && keepalive != 0)
-				{
-					u32 const pre = m_mainram[partner_word];
-					if (!(pre & 0x40000000))
-					{
-						m_mainram[partner_word] = pre | 0x40000000;
-						logerror("ROUND_START_ARM: re-armed frame=%u t=%.3fs keepalive %u->%u partner=rec%u pre=%08x post=%08x localidx=%u\n",
-								frame_count, machine().time().as_double(),
-								m_rsa_prev_keepalive, keepalive,
-								partner_is_rec1 ? 1 : 0, pre, m_mainram[partner_word], local_idx);
-					}
-					else
-					{
-						logerror("ROUND_START_ARM: refill edge frame=%u keepalive %u->%u partner=rec%u already armed (%08x)\n",
-								frame_count, m_rsa_prev_keepalive, keepalive,
-								partner_is_rec1 ? 1 : 0, pre);
-					}
-				}
-
-				// READ-ONLY: bit 0x2000 transitions on either record (the
-				// gun-actor "remote-driven" bit - never observed set in the
-				// P001 runs; any edge here is signal).
-				if ((rec0_flags ^ m_rsa_prev_rec0) & 0x2000)
-					logerror("ROUND_START_ARM: rec0 bit13 %u->%u frame=%u t=%.3fs rec0=%08x\n",
-							(m_rsa_prev_rec0 >> 13) & 1, (rec0_flags >> 13) & 1,
-							frame_count, machine().time().as_double(), rec0_flags);
-				if ((rec1_flags ^ m_rsa_prev_rec1) & 0x2000)
-					logerror("ROUND_START_ARM: rec1 bit13 %u->%u frame=%u t=%.3fs rec1=%08x\n",
-							(m_rsa_prev_rec1 >> 13) & 1, (rec1_flags >> 13) & 1,
-							frame_count, machine().time().as_double(), rec1_flags);
-
-				// READ-ONLY: op02 ingest evidence - count vblanks on which
-				// the partner +0x370 low-24 bits changed (op02 rewrites the
-				// status portion of the record; ledger P003 watch item).
-				u32 const partner_cur  = partner_is_rec1 ? rec1_flags : rec0_flags;
-				u32 const partner_prev = partner_is_rec1 ? m_rsa_prev_rec1 : m_rsa_prev_rec0;
-				if ((partner_cur ^ partner_prev) & 0x00ffffff)
-					++m_rsa_low24_changes;
-			}
-
-			if (frame_count % 60 == 0)
-			{
-				logerror("ROUND_START_ARM: status frame=%u mode=%u keepalive=%u rec0+0x370=%08x rec1+0x370=%08x localidx=%u low24_changes=%u\n",
-						frame_count, staging_mode, keepalive, rec0_flags, rec1_flags,
-						local_idx, m_rsa_low24_changes);
-				m_rsa_low24_changes = 0;
-			}
-
-			m_rsa_prev_keepalive = keepalive;
-			m_rsa_prev_rec0 = rec0_flags;
-			m_rsa_prev_rec1 = rec1_flags;
-			m_rsa_have_prev = true;
-		}
-
-		// P008 EXPERIMENT (branch patch/continuous-arm): CONTINUOUS partner
-		// re-arm.  Rationale (P002/P003 run-1 analysis, 2026-06-10): the ROM
-		// arms the partner's ingest bit 0x40000000 exactly once at round
-		// start (blez 0x8001313C) and the within-frame COM-fallback
-		// 0x800B2A8C-98 clears it again on any keepalive drain; P003's
-		// 0->positive edge trigger fired once and lost that race, and with
-		// the P001 floor active the keepalive never reads 0 at vblank so the
-		// edge cannot occur at all.  So instead: EVERY vblank, while linked
-		// gameplay is staged (mode word 0x802F3FD0 == 2) and the keepalive
-		// 0x802F3FD8 is alive (> 0), re-set bit 0x40000000 on the partner
-		// record's +0x370 word if it is clear.  The worst the fallback can do
-		// is hold the bit down for the remainder of one frame; every frame
-		// with a live keepalive starts armed, so the op02 import gate
-		// (0x800AB3B8-C4) sees an armed destination each frame.  Ordered
-		// AFTER the P001 floor block above so a freshly floored keepalive
-		// counts as alive in the same vblank pass.  Addresses identical to
-		// the P001/P003 blocks.  Experiment branch only - never merge to
-		// milestone.
-		if (m_patch_continuous_arm)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4]; // 0x802F3FD8 (post-floor)
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			bool const partner_is_rec1 = (local_idx == 0);
-			offs_t const partner_word = partner_is_rec1 ? (0x002F4844 / 4) : (0x002F43D0 / 4);
-			u32 const pre = m_mainram[partner_word];
-
-			if (staging_mode == 2 && keepalive != 0 && !(pre & 0x40000000))
-			{
-				m_mainram[partner_word] = pre | 0x40000000;
-				++m_ca_rearm_count;
-				logerror("CONTINUOUS_ARM: re-armed frame=%u t=%.3fs keepalive=%u partner=rec%u pre=%08x post=%08x localidx=%u count=%u\n",
-						frame_count, machine().time().as_double(), keepalive,
-						partner_is_rec1 ? 1 : 0, pre, m_mainram[partner_word],
-						local_idx, m_ca_rearm_count);
-			}
-
-			if (frame_count % 60 == 0)
-			{
-				// rec words re-read so the status line reflects any re-arm
-				// write made just above
-				logerror("CONTINUOUS_ARM: status frame=%u mode=%u keepalive=%u rec0+0x370=%08x rec1+0x370=%08x localidx=%u rearm_total=%u\n",
-						frame_count, staging_mode, keepalive,
-						m_mainram[0x002F43D0 / 4], m_mainram[0x002F4844 / 4],
-						local_idx, m_ca_rearm_count);
-			}
-		}
-
-		// P009 EXPERIMENT (branch patch/qual-trace): READ-ONLY qualification
-		// event tap.  ROM RX pipeline (gold/rom 30-netplay/40-gameplay-sync,
-		// instruction-verified there):
-		//   delivery (C139 IRQ) -> ring slot enqueue (head gp+0x75BE, 4-bit)
-		//   -> drain validator 0x8000BF38 Phase A (tail gp+0x75BA; length
-		//   [4..0x400] + marker + zero byte-checksum) -> on PASS jal
-		//   0x8000B8F0: remote_seq -> 0x802F3510, body bytes -> 0x802F3502/03,
-		//   payload len -> 0x802F3100, drift word 0x802F3504 = local_seq -
-		//   remote_seq (the RESET we call "qualifying"); on FAIL gp+0x75C8++.
-		//   With no pending slot the fallback bumps 0x802F3504 (saturating at
-		//   0x11 = link idle).
-		// Detection per vblank: remote-seq mirror change OR drift decrease =
-		// at least one qualifying ingest since the last vblank; gp+0x75C8
-		// delta = checksum failures; head/tail deltas (mod 16) = per-stage
-		// flow.  Pair events with the device-side QUAL_TRACE rx fingerprints
-		// by t= (deliveries ~17/s = one every 3-4 vblanks, so the pairing is
-		// usually unambiguous; multiple ingests inside one vblank window
-		// collapse into one event line - documented limitation).
-		// gp = 0x802C7820: gp+0x75BA = 0x802CEDDA, gp+0x75BE = 0x802CEDDE.
-		// Experiment branch only - never merge to milestone.
-		if (m_trace_qual)
-		{
-			u16 const head    = u16(m_mainram[0x002CEDDC / 4]);       // gp+0x75BE ring head (4-bit)
-			u16 const tail    = u16(m_mainram[0x002CEDD8 / 4]);       // gp+0x75BA drain tail
-			u16 const rseq    = u16(m_mainram[0x002F3510 / 4] >> 16); // remote_seq mirror (B8F0)
-			u32 const bodyw   = m_mainram[0x002F3500 / 4];            // 0x802F3502/03 body byte mirrors
-			u8  const body0   = u8(bodyw >> 8);
-			u8  const op      = u8(bodyw);
-			u16 const plen    = u16(m_mainram[0x002F3100 / 4] >> 16); // payload length (B8F0)
-			u32 const hdrw    = m_mainram[0x002F3FFC / 4];            // rolling header bytes FFC..FFF (H4 watches FFD bit0/bit2)
-			u32 const mode    = m_mainram[0x002F3FD0 / 4];
-			u32 const ka      = m_mainram[0x002F3FD8 / 4];
-			// cur_timeout = drift word 0x802F3504, cur_succ = gp+0x75C8,
-			// cur_link = gp+0x75BC, cur_counter = gp+0x75B8 (phase 9d tap)
-
-			if (m_qt_have_prev)
-			{
-				if (rseq != m_qt_prev_rseq || cur_timeout < m_qt_prev_drift)
-				{
-					++m_qt_win_quals;
-					logerror("QUAL_TRACE: qual frame=%u t=%.6f rseq %04x->%04x drift %04x->%04x body0=%02x op=%02x plen=%u hdr3FFC=%08x ka=%u\n",
-							frame_count, machine().time().as_double(),
-							m_qt_prev_rseq, rseq, m_qt_prev_drift, cur_timeout,
-							body0, op, plen, hdrw, ka);
-				}
-				if (cur_succ != m_qt_prev_succ)
-				{
-					m_qt_win_chkfails += u16(cur_succ - m_qt_prev_succ);
-					logerror("QUAL_TRACE: chkfail frame=%u t=%.6f succ75C8 %04x->%04x head=%u tail=%u drift=%04x rseq=%04x\n",
-							frame_count, machine().time().as_double(),
-							m_qt_prev_succ, cur_succ, head, tail, cur_timeout, rseq);
-				}
-				m_qt_win_enq   += u16(head - m_qt_prev_head) & 0xf;
-				m_qt_win_drain += u16(tail - m_qt_prev_tail) & 0xf;
-			}
-
-			if (frame_count % 60 == 0)
-			{
-				logerror("QUAL_TRACE: status frame=%u t=%.6f mode=%u drift=%04x rseq=%04x head=%u tail=%u enq=%u drain=%u quals=%u chkfails=%u link75BC=%04x counter=%u plen=%u hdr3FFC=%08x ka=%u\n",
-						frame_count, machine().time().as_double(), mode,
-						cur_timeout, rseq, head, tail,
-						m_qt_win_enq, m_qt_win_drain, m_qt_win_quals, m_qt_win_chkfails,
-						cur_link, cur_counter, plen, hdrw, ka);
-				m_qt_win_enq = 0;
-				m_qt_win_drain = 0;
-				m_qt_win_quals = 0;
-				m_qt_win_chkfails = 0;
-			}
-
-			m_qt_prev_drift = cur_timeout;
-			m_qt_prev_succ = cur_succ;
-			m_qt_prev_rseq = rseq;
-			m_qt_prev_head = head;
-			m_qt_prev_tail = tail;
-			m_qt_have_prev = true;
-		}
-
-		// P026 PART 2 EXPERIMENT (branch patch/reasm-chunk-passthru): READ-ONLY
-		// phase9-validator trace.  Static provenance + resolved 75C8/75BC
-		// semantics: see the member-block comment (gp+0x75C8 = CHECKSUM-FAIL
-		// counter, increment 0x8000C004-0C on byte-sum!=0, beqzl 0x8000BFFC
-		// skips it to the jal 0x8000B8F0 dispatch on sum==0; gp+0x75BC =
-		// tri-state last-outcome 0/1/2 = validated/chkfail/timeout).  The
-		// dispatch buffer 0x802F3510 receives the drained cells of EVERY slot
-		// (written during summing, BEFORE the pass/fail branch), so a head
-		// change = one-or-more drains this vblank; the same-vblank 75C8 delta
-		// attributes pass vs fail.  cur_link/cur_succ/cur_timeout/cur_counter
-		// come from the always-on phase-9d sample at the top of this function
-		// (cur_succ IS gp+0x75C8 - kept under its historic name there; this
-		// tap reports it as what it is, chkfail75C8).  READ-ONLY: m_mainram
-		// reads only, no game-RAM writes.  Experiment branch only - never
-		// merge to milestone.
-		if (m_trace_phase9val)
-		{
-			u32 const buf0     = m_mainram[0x002F3510 / 4];            // dispatch buffer bytes 0-3 (remote ctr + body head)
-			u32 const buf1     = m_mainram[0x002F3514 / 4];            // dispatch buffer bytes 4-7
-			u32 const bodyw    = m_mainram[0x002F3500 / 4];            // bytes 3500-3503: plen mirror hi / fresh 3502 / op 3503
-			u8  const fresh    = u8(bodyw >> 8);                       // freshness byte 0x802F3502 ("gate3502")
-			u8  const op3503   = u8(bodyw);                            // body byte 0x802F3503
-			u16 const plen     = u16(m_mainram[0x002F3100 / 4] >> 16); // payload length (B8F0)
-			u16 const ring_wr  = u16(m_mainram[0x002CEDDC / 4]) & 0xf; // gp+0x75BE scanner enqueue nibble
-			u16 const ring_rd  = u16(m_mainram[0x002CEDD8 / 4]) & 0xf; // gp+0x75BA drain stop nibble
-			u32 const ka       = m_mainram[0x002F3FD8 / 4];
-			u32 const mode     = m_mainram[0x002F3FD0 / 4];
-
-			if (m_p9v_have_prev)
-			{
-				u16 const chkfail_delta = u16(cur_succ - m_p9v_prev_chkfail);
-				if (buf0 != m_p9v_prev_buf0 || buf1 != m_p9v_prev_buf1)
-				{
-					++m_p9v_win_drains;
-					logerror("PHASE9VAL: drain frame=%u t=%.6f buf3510=%08x%08x plen=%u drift=%04x link=%04x chkfail_delta=%u ring=%u/%u\n",
-							frame_count, machine().time().as_double(), buf0, buf1,
-							plen, cur_timeout, cur_link, chkfail_delta, ring_wr, ring_rd);
-				}
-				if (cur_succ != m_p9v_prev_chkfail)
-				{
-					m_p9v_win_chkfails += chkfail_delta;
-					logerror("PHASE9VAL: chkfail frame=%u t=%.6f 75C8 %04x->%04x buf3510=%08x%08x plen=%u drift=%04x ring=%u/%u\n",
-							frame_count, machine().time().as_double(),
-							m_p9v_prev_chkfail, cur_succ, buf0, buf1, plen,
-							cur_timeout, ring_wr, ring_rd);
-				}
-				if (cur_link != m_p9v_prev_link)
-					logerror("PHASE9VAL: link frame=%u t=%.6f 75BC %04x->%04x (0=validated 1=chkfail 2=timeout) drift=%04x fresh3502=%02x chkfails75C8=%04x\n",
-							frame_count, machine().time().as_double(),
-							m_p9v_prev_link, cur_link, cur_timeout, fresh, cur_succ);
-			}
-
-			if (frame_count % 60 == 0)
-			{
-				logerror("PHASE9VAL: status frame=%u t=%.6f link=%04x chkfails75C8=%04x drains_win=%u chkfails_win=%u drift=%04x fresh3502=%02x op3503=%02x plen=%u rseq=%04x ring=%u/%u ctr75B8=%u ka=%u mode=%u\n",
-						frame_count, machine().time().as_double(), cur_link, cur_succ,
-						m_p9v_win_drains, m_p9v_win_chkfails, cur_timeout, fresh,
-						op3503, plen, u16(buf0 >> 16), ring_wr, ring_rd,
-						cur_counter, ka, mode);
-				m_p9v_win_drains = 0;
-				m_p9v_win_chkfails = 0;
-			}
-
-			m_p9v_prev_link = cur_link;
-			m_p9v_prev_chkfail = cur_succ;
-			m_p9v_prev_buf0 = buf0;
-			m_p9v_prev_buf1 = buf1;
-			m_p9v_have_prev = true;
-		}
-
-		// P015 EXPERIMENT (branch patch/render-gate-actor-spawn-trace):
-		// READ-ONLY adoption / render-gate / cutscene-timer trace.  P014 proved
-		// the 718B op-0x17/0x71/0xfe actor/scene batch reassembles, crosses the
-		// link, and BLUE DMA-ingests it (its cutscene advances to shot 0x118003
-		// on delivery) but then FREEZES there, rendering environment but never
-		// characters, with bit 0x2000 (render gate) dark and the 0x0080d0
-		// render-window low-24 signature absent on both cabs.  This tap decides
-		// between (a) wrong-slot ingest, (b) render-gate gated on a ready-bit
-		// that never sets, (c) a missing 2nd link direction, by observing AFTER
-		// each ingest:
-		//   - the render-gate state: bit 0x2000 + the 0x0080d0 low-24 composite
-		//     on both +0x370 records (rec0=0x802F43D0, rec1=0x802F4844).  The
-		//     ONLY ROM writer of bit 0x2000 into +0x370 is op-55 RX -> 0x80013D44
-		//     (sw 0x80013E10) copying the PEER's 24-bit wire flags verbatim; if
-		//     bit 0x2000 never appears, blue is not receiving an op-55 frame that
-		//     carries it -> a missing 2nd direction (c) OR an unset peer-side
-		//     ready-bit (b).
-		//   - the gp+0x7074==2 full-link gate (derived 0x80016BCC from partner
-		//     +0x370 & 0x6000 == 0x6000) and the gp+0x7054 cutscene timer (op-70
-		//     adoption store 0x80016E80, gated 0x80016E58 bit 0x2000 / 0x80016E64
-		//     gp+0x7074==2): does the cutscene timer advance after each bulk
-		//     delivery then STOP at the 0x118003 freeze, and is it pinned because
-		//     the render gate (bit 0x2000) is dark (same bit gates both)?
-		//   - actor-array slot 0 (spawn ops write 0x802F4DB0 + idx*0x2B8: +0x6C
-		//     active = 0x802F4E1C, +0x1F4 coord0 = 0x802F4FA4) and the partner
-		//     +0x370 record low-24 (op02 coordinate ingest evidence, per the
-		//     2026-06-10 map): does the ingested batch reach the actor/partner
-		//     records at all (else wrong-slot ingest (a))?
-		// NOTE on op-0x17 landing: its handler 0x800AC0E8 writes a record
-		// resolved at runtime by 0x8010FE84(id) (stores +0xA8/AC/B0 position,
-		// +0xE0 coord), NOT a fixed address - so we watch the FIXED-address
-		// signals above (the +0x370 partner record low-24, which op02 rewrites,
-		// and the fixed-base actor-spawn array) rather than a guessed op-0x17
-		// offset.  The device-side ADOPT: ingest line (namco_c139, paired by t=)
-		// reports WHERE each delivered frame lands (P014's "to word=0x01c6").
-		// All reads READ-ONLY (m_mainram / device adopt_peek_ram, no writes).
-		// Addresses verified from gold/full.txt (see 2026-06-16-p015 agent-log).
-		// Sampled per-vblank; events logged on change + a 1/s status line.
-		// Experiment branch only - never merge to milestone.
-		if (m_trace_adopt)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4]; // 0x802F3FD8
-			u32 const rec0_flags   = m_mainram[0x002F43D0 / 4]; // record 0 +0x370
-			u32 const rec1_flags   = m_mainram[0x002F4844 / 4]; // record 1 +0x370
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			u32 const t7054        = m_mainram[0x002CE874 / 4]; // gp+0x7054 cutscene/round timer
-			u32 const t7074        = m_mainram[0x002CE894 / 4]; // gp+0x7074 ==2 full-link gate
-			bool const partner_is_rec1 = (local_idx == 0);
-			u32 const partner_flags = partner_is_rec1 ? rec1_flags : rec0_flags;
-			// actor-spawn array slot 0 (fixed base 0x802F4DB0, stride 0x2B8):
-			u32 const a0_active    = m_mainram[0x002F4E1C / 4]; // slot 0 +0x6C active (hw in upper16)
-			u32 const a0_coord0    = m_mainram[0x002F4FA4 / 4]; // slot 0 +0x1F4 coord0
-			// link-chip RX RAM at P014's bulk landing word (rx_base 0x1000 +
-			// fifo_ptr 0x01c6 = m_ram word 0x11c6); read-only peek, no drain:
-			u16 const word01c6     = m_c139 ? m_c139->adopt_peek_ram(0x11c6) : 0;
-
-			// render-gate composite helpers
-			bool const rg0  = (rec0_flags & 0x2000) != 0;
-			bool const rg1  = (rec1_flags & 0x2000) != 0;
-			bool const rw0  = (rec0_flags & 0x00ffffff) == 0x0080d0; // 0x0080d0 render-window low-24
-			bool const rw1  = (rec1_flags & 0x00ffffff) == 0x0080d0;
-
-			if (m_adopt_have_prev)
-			{
-				// EVENT: bit 0x2000 (render gate) edge on either record - the
-				// keystone; never observed set in 6 prior runs.  Any edge here
-				// names the moment (and which record) the gate opens.
-				if ((rec0_flags ^ m_adopt_prev_rec0) & 0x2000)
-					logerror("ADOPT: rendergate rec0 bit2000 %u->%u frame=%u t=%.3fs rec0=%08x t7074=%u\n",
-							(m_adopt_prev_rec0 >> 13) & 1, rg0 ? 1 : 0, frame_count,
-							machine().time().as_double(), rec0_flags, t7074);
-				if ((rec1_flags ^ m_adopt_prev_rec1) & 0x2000)
-					logerror("ADOPT: rendergate rec1 bit2000 %u->%u frame=%u t=%.3fs rec1=%08x t7074=%u\n",
-							(m_adopt_prev_rec1 >> 13) & 1, rg1 ? 1 : 0, frame_count,
-							machine().time().as_double(), rec1_flags, t7074);
-
-				// EVENT: 0x0080d0 render-window low-24 composite appears/leaves
-				// on either record (absent on both cabs in P014).
-				bool const prw0 = (m_adopt_prev_rec0 & 0x00ffffff) == 0x0080d0;
-				bool const prw1 = (m_adopt_prev_rec1 & 0x00ffffff) == 0x0080d0;
-				if (rw0 != prw0)
-					logerror("ADOPT: renderwindow rec0 0080d0 %u->%u frame=%u t=%.3fs rec0=%08x\n",
-							prw0 ? 1 : 0, rw0 ? 1 : 0, frame_count, machine().time().as_double(), rec0_flags);
-				if (rw1 != prw1)
-					logerror("ADOPT: renderwindow rec1 0080d0 %u->%u frame=%u t=%.3fs rec1=%08x\n",
-							prw1 ? 1 : 0, rw1 ? 1 : 0, frame_count, machine().time().as_double(), rec1_flags);
-
-				// EVENT: gp+0x7074 (==2 full-link gate) transition.
-				if (t7074 != m_adopt_prev_t7074)
-					logerror("ADOPT: cutscene gate7074 %u->%u frame=%u t=%.3fs rec0=%08x rec1=%08x partner=rec%u\n",
-							m_adopt_prev_t7074, t7074, frame_count, machine().time().as_double(),
-							rec0_flags, rec1_flags, partner_is_rec1 ? 1 : 0);
-
-				// 1/s window aggregates: cutscene-timer advances, partner +0x370
-				// low-24 changes (op02 ingest), actor-slot changes (spawn ingest),
-				// link-RAM 0x01c6 changes (bulk landing).
-				if (t7054 > m_adopt_prev_t7054)
-					++m_adopt_t7054_advances;
-				if (t7054 > m_adopt_max_t7054)
-					m_adopt_max_t7054 = t7054;
-				if ((partner_flags ^ (partner_is_rec1 ? m_adopt_prev_rec1 : m_adopt_prev_rec0)) & 0x00ffffff)
-					++m_adopt_p_pos_changes;
-				if (a0_active != m_adopt_prev_a0_active)
-					++m_adopt_actor_changes;
-				if (u32(word01c6) != m_adopt_prev_word01c6)
-					++m_adopt_word01c6_changes;
-			}
-
-			// 1/s status line: render-gate + cutscene-timer + ingest-landing in
-			// one grep-decomposable record (ADOPT: status ...).
-			if (frame_count % 60 == 0)
-			{
-				logerror("ADOPT: status frame=%u t=%.3fs mode=%u ka=%u rg2000=%u/%u rw0080d0=%u/%u rec0=%08x rec1=%08x partner=rec%u t7054=%u t7054max=%u t7074=%u t7054adv=%u plow24chg=%u actorchg=%u a0act=%04x a0c0=%08x word01c6=%04x w01c6chg=%u\n",
-						frame_count, machine().time().as_double(), staging_mode, keepalive,
-						rg0 ? 1 : 0, rg1 ? 1 : 0, rw0 ? 1 : 0, rw1 ? 1 : 0,
-						rec0_flags, rec1_flags, partner_is_rec1 ? 1 : 0,
-						t7054, m_adopt_max_t7054, t7074, m_adopt_t7054_advances, m_adopt_p_pos_changes,
-						m_adopt_actor_changes, u16(a0_active >> 16), a0_coord0,
-						word01c6, m_adopt_word01c6_changes);
-				m_adopt_t7054_advances = 0;
-				m_adopt_p_pos_changes = 0;
-				m_adopt_actor_changes = 0;
-				m_adopt_word01c6_changes = 0;
-				m_adopt_max_t7054 = 0;
-			}
-
-			m_adopt_prev_rec0 = rec0_flags;
-			m_adopt_prev_rec1 = rec1_flags;
-			m_adopt_prev_t7054 = t7054;
-			m_adopt_prev_t7074 = t7074;
-			m_adopt_prev_a0_active = a0_active;
-			m_adopt_prev_word01c6 = u32(word01c6);
-			m_adopt_have_prev = true;
-		}
-
-		// P016 PHASE A EXPERIMENT (branch patch/op70-cutscene-timer-arm):
-		// READ-ONLY op-70 cutscene-timer accept/reject proof.  See the member
-		// block for rationale.  The DEVICE side (namco_c139 OP70: rx) proves an
-		// op-70 frame ARRIVED and what peer cutscene-timer value it carries; this
-		// driver-side half is the DECISIVE accept/reject: it watches gp+0x7054
-		// (the ROM store target at 0x80016E80) for a change (= ACCEPT) and, every
-		// vblank, samples the two gate operands the ROM tests so a REJECT names
-		// which predicate failed.  The op-70 gate reads the LOCAL record's +0x370
-		// (0x80016E50: 0x802F43D0 + localidx*0x474), NOT the partner record - so
-		// we select rec0/rec1 by localidx exactly as the ROM does.  Independent of
-		// all patch gates; read-only.  Experiment branch only - never merge.
-		if (m_trace_op70)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4]; // 0x802F3FD8
-			u32 const rec0_flags   = m_mainram[0x002F43D0 / 4]; // record 0 +0x370
-			u32 const rec1_flags   = m_mainram[0x002F4844 / 4]; // record 1 +0x370
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			u32 const t7054        = m_mainram[0x002CE874 / 4]; // gp+0x7054 cutscene/round timer (op-70 store target)
-			u32 const t7074        = m_mainram[0x002CE894 / 4]; // gp+0x7074 ==2 full-link gate
-			// LOCAL record (op-70 gate 0x80016E50 reads 0x802F43D0 + localidx*0x474):
-			bool const local_is_rec0 = (local_idx == 0);
-			u32 const local_flags  = local_is_rec0 ? rec0_flags : rec1_flags;
-			u32 const partner_flags = local_is_rec0 ? rec1_flags : rec0_flags;
-			// gate operand 1 (0x80016E58 beqz): LOCAL +0x370 & 0x2000
-			bool const gate_local2000 = (local_flags & 0x2000) != 0;
-			// gate operand 2 (0x80016E64 bne 2): gp+0x7074 == 2 (needs partner +0x370 & 0x6000 == 0x6000)
-			bool const gate_7074eq2 = (t7074 == 2);
-			bool const partner_6000 = (partner_flags & 0x6000) == 0x6000;
-
-			if (m_op70_have_prev)
-			{
-				// ACCEPT detector: gp+0x7054 changed = the ROM store at
-				// 0x80016E80 fired (op-70 adopted the peer's cutscene timer).
-				// On the linked rig P015 saw this NEVER happen (perma-0); any
-				// line here is decisive ACCEPT evidence.
-				if (t7054 != m_op70_prev_t7054)
-				{
-					++m_op70_t7054_changes;
-					logerror("OP70: accept frame=%u t=%.6f gp+0x7054 %u->%u (op-70 store 0x80016E80 fired) gate_local2000=%u gate_7074eq2=%u localidx=%u local=%08x partner=%08x\n",
-							frame_count, machine().time().as_double(),
-							m_op70_prev_t7054, t7054,
-							gate_local2000 ? 1 : 0, gate_7074eq2 ? 1 : 0,
-							local_idx, local_flags, partner_flags);
-				}
-			}
-
-			// 1/s window aggregates: how often each gate operand was satisfied.
-			if (gate_local2000)
-				++m_op70_gate_local2000_set;
-			if (gate_7074eq2)
-				++m_op70_gate_7074eq2;
-
-			// 1/s status line: the two gate operands + the current timer, so the
-			// analyst can read, beside the device-side OP70: rx arrival lines,
-			// WHETHER each op-70 frame would be accepted or rejected and by which
-			// predicate.  When gp+0x7054 stays 0 while OP70: rx lines appear, the
-			// gate columns below name the false predicate (gate_local2000=0 =>
-			// LOCAL +0x370 bit 0x2000 clear; gate_7074eq2=0 => gp+0x7074 != 2,
-			// which itself needs partner6000=1).
-			if (frame_count % 60 == 0)
-			{
-				logerror("OP70: status frame=%u t=%.6f mode=%u ka=%u t7054=%u t7074=%u gate_local2000=%u gate_7074eq2=%u partner6000=%u localidx=%u local=%08x partner=%08x t7054chg=%u local2000set=%u/60 7074eq2=%u/60\n",
-						frame_count, machine().time().as_double(), staging_mode, keepalive,
-						t7054, t7074, gate_local2000 ? 1 : 0, gate_7074eq2 ? 1 : 0,
-						partner_6000 ? 1 : 0, local_idx, local_flags, partner_flags,
-						m_op70_t7054_changes, m_op70_gate_local2000_set, m_op70_gate_7074eq2);
-				m_op70_t7054_changes = 0;
-				m_op70_gate_local2000_set = 0;
-				m_op70_gate_7074eq2 = 0;
-			}
-
-			m_op70_prev_t7054 = t7054;
-			m_op70_have_prev = true;
-		}
-
-		// P020 EXPERIMENT (branch patch/linked-gate-supply): FORCING supply of
-		// the LOCAL "fully-linked" 0x6000 bits.  See the member-block comment for
-		// full rationale + ROM provenance.  Each vblank, while linked gameplay is
-		// staged (mode word 0x802F3FD0 == 2 - the same gate the KEEPALIVE_FLOOR /
-		// CONTINUOUS_ARM blocks use), OR 0x6000 into the LOCAL record +0x370 word
-		// (RMW, write back only when it changes).  The LOCAL record base is
-		// resolved EXACTLY as the LINKBITS trace / KEEPALIVE_FLOOR blocks do:
-		// localidx = gp+0x7608 (0x802CEE28); local = 0x802F43D0 + localidx*0x474
-		// (rec0 0x802F43D0 if localidx==0, rec1 0x802F4844 if 1).  SUPPLY only -
-		// no write to gp+0x7074, no partner-record write, no synthetic op-70: the
-		// ROM's own op55 builder/TX carries the supplied +0x370 0x6000 to the peer
-		// so the downstream gate7074->2 / op-70 chain comes alive naturally.
-		// OR-only + env-gated + mode==2-bounded (see safety note in the member
-		// block).  Ordered BEFORE the LINKBITS trace below so the supplied bit is
-		// reflected in the same vblank's LINKBITS: status line.  Experiment branch
-		// only - never merge to milestone.
-		if (m_patch_linked_gate)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			// LOCAL record +0x370 = 0x802F43D0 + localidx*0x474 (rec0 if
-			// localidx==0, rec1 0x802F4844 if 1) - same resolution as LINKBITS.
-			offs_t const local_word = (local_idx == 0) ? (0x002F43D0 / 4) : (0x002F4844 / 4);
-			u32 const pre = m_mainram[local_word];
-
-			if (staging_mode == 2 && (pre & 0x6000) != 0x6000)
-			{
-				m_mainram[local_word] = pre | 0x6000;
-				++m_lg_set_count;
-				logerror("LINKED_GATE: set frame=%u t=%.6f localidx=%u local+0x370 pre=%08x post=%08x count=%u\n",
-						frame_count, machine().time().as_double(), local_idx,
-						pre, m_mainram[local_word], m_lg_set_count);
-			}
-
-			if (frame_count % 60 == 0)
-				logerror("LINKED_GATE: status frame=%u t=%.6f mode=%u localidx=%u local+0x370=%08x set_total=%u\n",
-						frame_count, machine().time().as_double(), staging_mode,
-						local_idx, m_mainram[local_word], m_lg_set_count);
-		}
-
-		// P024 EXPERIMENT (branch patch/op55-carrier-repeat, off
-		// patch/linked-gate-tx-only): PARTNER-RECORD STICKY LATCH.  See the
-		// member-block comment for full rationale + the partner-0x2000 safety
-		// pre-step.  Each vblank, while linked gameplay is staged (mode word
-		// 0x802F3FD0 == 2), OR 0x6000 into the PARTNER record +0x370 word so the
-		// gate (0x80016BB4-BCC) sees PERSISTENT 0x6000 (P021's wire-only advertise
-		// landed it only ~1/scene and it lapsed; this re-supplies it every frame).
-		// PARTNER record = 0x802F43D0 + (1-localidx)*0x474 (rec1 0x802F4844 if
-		// localidx==0, rec0 0x802F43D0 if 1) - resolved EXACTLY as the LINKBITS
-		// trace / KEEPALIVE_FLOOR / CONTINUOUS_ARM blocks resolve the partner.
-		// INVARIANT: the LOCAL record (0x802F43D0 + localidx*0x474) is NEVER
-		// written - only the gun-actor-irrelevant PARTNER record carries 0x2000, so
-		// the local gun stays human (no P020/P023a death derail).  OR-only +
-		// env-gated + mode-2-bounded + idempotent (writes back only when 0x6000 is
-		// not already both set).  Ordered BEFORE the LINKBITS trace below so the
-		// latched partner bit is reflected in the same vblank's LINKBITS: status
-		// line (partner6000).  Experiment branch only - never merge to milestone.
-		if (m_patch_op55_repeat)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			// PARTNER record +0x370 = 0x802F43D0 + (1-localidx)*0x474 (rec1
-			// 0x802F4844 if localidx==0, rec0 0x802F43D0 if 1) - the SAME resolution
-			// the gate uses (0x80016BB4 reads 0x802F43D0 + (1-gp+0x7608)*0x474).
-			offs_t const partner_word = (local_idx == 0) ? (0x002F4844 / 4) : (0x002F43D0 / 4);
-			u32 const pre = m_mainram[partner_word];
-
-			if (staging_mode == 2 && (pre & 0x6000) != 0x6000)
-			{
-				m_mainram[partner_word] = pre | 0x6000;
-				++m_or_partner6000_count;
-				logerror("OP55_REPEAT: latch frame=%u t=%.6f localidx=%u partner=rec%u +0x370 pre=%08x post=%08x count=%u\n",
-						frame_count, machine().time().as_double(), local_idx,
-						(local_idx == 0) ? 1u : 0u, pre, m_mainram[partner_word],
-						m_or_partner6000_count);
-			}
-
-			if (frame_count % 60 == 0)
-				logerror("OP55_REPEAT: status frame=%u t=%.6f mode=%u localidx=%u partner=rec%u partner+0x370=%08x partner6000=%u latch_total=%u\n",
-						frame_count, machine().time().as_double(), staging_mode,
-						local_idx, (local_idx == 0) ? 1u : 0u, m_mainram[partner_word],
-						((m_mainram[partner_word] & 0x6000) == 0x6000) ? 1u : 0u,
-						m_or_partner6000_count);
-		}
-
-		// P019 STEP 1 EXPERIMENT (branch patch/op70-linked-gate-arm): READ-ONLY
-		// "linkbits" trace.  See the member-block comment for full rationale +
-		// ROM provenance.  This driver-side half samples the LOCAL and PARTNER
-		// +0x370 0x6000 bits each vblank, logs transitions, and pairs them with
-		// gp+0x7074 and the gate's would-be value so the chain
-		// local-set -> TX -> ingest -> gate is visible in one LINKBITS: status
-		// line.  Decision: local6000=0 all run => (X) local never declares
-		// fully-linked (root is the local 0x4000/0x2000 set gate); local6000=1 +
-		// (device LINKBITS: txflags 6000 absent) => (Y) TX framing drops it;
-		// local6000=1 + tx 6000 present + (device LINKBITS: rxflags 6000 present)
-		// but partner6000 still 0 => (Z) the peer's op55 ingest didn't land it.
-		// All reads READ-ONLY (m_mainram).  Experiment branch only - never merge.
-		if (m_trace_linkbits)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4]; // 0x802F3FD0
-			u32 const rec0_flags   = m_mainram[0x002F43D0 / 4]; // record 0 +0x370
-			u32 const rec1_flags   = m_mainram[0x002F4844 / 4]; // record 1 +0x370
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4]; // gp+0x7608 local record index
-			u32 const t7074        = m_mainram[0x002CE894 / 4]; // gp+0x7074 ==2 full-link gate
-			u32 const t705c        = m_mainram[0x002CE87C / 4]; // gp+0x705C (local 0x4000 set gate predicate 0x80016DA0)
-			// localidx selects the cab's OWN record (rec0 if localidx==0) and the
-			// PARTNER is the other (exactly as the ROM: local = 0x802F43D0 +
-			// localidx*0x474; partner = 0x802F43D0 + (1-localidx)*0x474).
-			bool const local_is_rec0 = (local_idx == 0);
-			u32 const local_flags   = local_is_rec0 ? rec0_flags : rec1_flags;
-			u32 const partner_flags = local_is_rec0 ? rec1_flags : rec0_flags;
-			bool const local_6000_both   = (local_flags   & 0x6000) == 0x6000;
-			bool const partner_6000_both = (partner_flags & 0x6000) == 0x6000;
-			// would-be gate value the ROM derives at 0x80016BC0-C8 from the PARTNER
-			// 0x6000 (this is what gp+0x7074 SHOULD become): 2 iff partner 0x6000
-			// both set, else 1.
-			unsigned const gate_wouldbe = partner_6000_both ? 2u : 1u;
-
-			if (m_lb_have_prev)
-			{
-				// EVENT: LOCAL +0x370 0x6000 bit edges (the (X) decider - has the
-				// local cab EVER declared itself fully-linked?).  Log each of the
-				// two bits separately so the 0x4000 (0x80016DBC) vs 0x2000
-				// (0x800166B0) write sites can be told apart.
-				if ((local_flags ^ m_lb_prev_local) & 0x2000)
-					logerror("LINKBITS: local bit2000 %u->%u frame=%u t=%.6f local=%08x t705c=%u (set site 0x800166B0)\n",
-							(m_lb_prev_local >> 13) & 1, (local_flags >> 13) & 1,
-							frame_count, machine().time().as_double(), local_flags, t705c);
-				if ((local_flags ^ m_lb_prev_local) & 0x4000)
-					logerror("LINKBITS: local bit4000 %u->%u frame=%u t=%.6f local=%08x t705c=%u (set site 0x80016DBC gate gp+0x705C==0)\n",
-							(m_lb_prev_local >> 14) & 1, (local_flags >> 14) & 1,
-							frame_count, machine().time().as_double(), local_flags, t705c);
-
-				// EVENT: PARTNER +0x370 0x6000 bit edges (the ingest decider - did
-				// op55 RX land 0x6000 into rec1?).
-				if ((partner_flags ^ m_lb_prev_partner) & 0x2000)
-					logerror("LINKBITS: partner bit2000 %u->%u frame=%u t=%.6f partner=%08x (op55 RX -> 0x80013E10)\n",
-							(m_lb_prev_partner >> 13) & 1, (partner_flags >> 13) & 1,
-							frame_count, machine().time().as_double(), partner_flags);
-				if ((partner_flags ^ m_lb_prev_partner) & 0x4000)
-					logerror("LINKBITS: partner bit4000 %u->%u frame=%u t=%.6f partner=%08x (op55 RX -> 0x80013E10)\n",
-							(m_lb_prev_partner >> 14) & 1, (partner_flags >> 14) & 1,
-							frame_count, machine().time().as_double(), partner_flags);
-
-				// EVENT: gate gp+0x7074 transition + its driving predicate gp+0x705C
-				// (the local 0x4000 set gate at 0x80016DA0).
-				if (t7074 != m_lb_prev_t7074)
-					logerror("LINKBITS: gate7074 %u->%u frame=%u t=%.6f local=%08x partner=%08x wouldbe=%u\n",
-							m_lb_prev_t7074, t7074, frame_count, machine().time().as_double(),
-							local_flags, partner_flags, gate_wouldbe);
-				if (t705c != m_lb_prev_t705c)
-					logerror("LINKBITS: t705c %u->%u frame=%u t=%.6f (gates local bit4000 set at 0x80016DB8: ==0 -> set, !=0 -> clear)\n",
-							m_lb_prev_t705c, t705c, frame_count, machine().time().as_double());
-			}
-
-			// 1/s window aggregates.
-			if (local_6000_both)
-				++m_lb_local6000_set;
-			if (partner_6000_both)
-				++m_lb_partner6000_set;
-
-			// 1/s LINKBITS: status - the whole chain in one grep-decomposable line:
-			// local0x6000 (X), partner0x6000 (ingest result), gp+0x7074 (gate), and
-			// the would-be gate value.  Pair with the device-side LINKBITS: txflags
-			// / rxflags (op55 24-bit wire flags) by t= to tell (Y) from (Z).
-			if (frame_count % 60 == 0)
-			{
-				logerror("LINKBITS: status frame=%u t=%.6f mode=%u localidx=%u local=%08x partner=%08x local6000=%u partner6000=%u t7074=%u t705c=%u wouldbe=%u local6000set=%u/60 partner6000set=%u/60\n",
-						frame_count, machine().time().as_double(), staging_mode, local_idx,
-						local_flags, partner_flags,
-						local_6000_both ? 1 : 0, partner_6000_both ? 1 : 0,
-						t7074, t705c, gate_wouldbe,
-						m_lb_local6000_set, m_lb_partner6000_set);
-				m_lb_local6000_set = 0;
-				m_lb_partner6000_set = 0;
-			}
-
-			m_lb_prev_local   = local_flags;
-			m_lb_prev_partner = partner_flags;
-			m_lb_prev_t7074   = t7074;
-			m_lb_prev_t705c   = t705c;
-			m_lb_have_prev    = true;
-		}
-
-		// P025 EXPERIMENT (branch patch/playclock-humangate-trace): READ-ONLY
-		// per-vblank trace of (1) the op6F play-clock pair rec+0x390/+0x394 and
-		// its emit/adopt gate predicates and (2) the bit-0x0004 co-op/human gate
-		// on BOTH records with full attribution context on every set AND clear.
-		// See the member-block comment for the full ROM provenance.  Volume:
-		// edges + 1/s status only (normal +1/frame clock ticks are NOT logged
-		// per-vblank - only JUMPS, i.e. adoption/re-init, and tick-run
-		// start/stop edges).  All reads (m_mainram + device counters); no
-		// writes.  Experiment branch only - never merge to milestone.
-		if (m_trace_playclock)
-		{
-			u32 const staging_mode = m_mainram[0x002F3FD0 / 4];            // 0x802F3FD0 staging mode (2 = linked gameplay)
-			u32 const keepalive    = m_mainram[0x002F3FD8 / 4];            // 0x802F3FD8 keepalive (op6F TX gate (b): must be > 0)
-			u32 const local_idx    = m_mainram[0x002CEE28 / 4];            // gp+0x7608 local record index (0 on this ROM)
-			u32 const rec0_flags   = m_mainram[0x002F43D0 / 4];            // rec0 +0x370
-			u32 const rec1_flags   = m_mainram[0x002F4844 / 4];            // rec1 +0x370
-			u32 const rec0_390     = m_mainram[0x002F43F0 / 4];            // rec0 +0x390 play-clock (ticks +1/frame in 0x80014CC0)
-			u32 const rec0_394     = m_mainram[0x002F43F4 / 4];            // rec0 +0x394 segment clock
-			u32 const rec1_390     = m_mainram[0x002F4864 / 4];            // rec1 +0x390 (expected static -1: tick is LOCAL-record only)
-			u32 const rec1_394     = m_mainram[0x002F4868 / 4];            // rec1 +0x394
-			u8  const role3ffc     = u8(m_mainram[0x002F3FFC / 4] >> 24);  // byte 0x802F3FFC (bit7: 1 = op6F MASTER/emit, 0 = SLAVE/adopt)
-			u8  const gate3502     = u8(m_mainram[0x002F3500 / 4] >> 8);   // byte 0x802F3502 peer TX gate (must be 4 for gate-4 dispatch incl. op6F RX)
-			u8  const framephase   = u8(m_mainram[0x002CED10 / 4]);        // gp+0x74F0 low byte = gp+0x74F3 (op6F TX gate (a): emits when == 0)
-			u16 const pause7570    = u16(m_mainram[0x002CED90 / 4] >> 16); // gp+0x7570 (clock-tick hold: != 0 -> no tick, 0x80014CCC)
-
-			bool const rec0_04 = (rec0_flags & 0x0004) != 0;
-			bool const rec1_04 = (rec1_flags & 0x0004) != 0;
-
-			if (m_pc_have_prev)
-			{
-				// EVENT: bit 0x0004 edge on EITHER record - one line carrying BOTH
-				// records' pre/post words so the clear can be ATTRIBUTED by
-				// fingerprint: paired= both records flipped this same vblank (the
-				// script handler 0x800BE200 is the ONLY paired site); a whole-word
-				// discontinuity = record re-init 0x80013D44 (round start / op55 RX);
-				// a single-record low24-only change = op02 mirror (correlate with
-				// the peer log by t=) or the reset helper 0x80013C54.
-				bool const p0_04 = (m_pc_prev_rec0_flags & 0x0004) != 0;
-				bool const p1_04 = (m_pc_prev_rec1_flags & 0x0004) != 0;
-				if (p0_04 != rec0_04 || p1_04 != rec1_04)
-					logerror("PLAYCLOCK: bit04 edge frame=%u t=%.6f rec0 %u->%u (%08x->%08x) rec1 %u->%u (%08x->%08x) paired=%u mode=%u ka=%u role3ffc=%02x (paired-flip=script 0x800BE200; whole-word=re-init 0x80013D44; low24-only=op02 mirror 0x800AB438/peer or 0x80013C54)\n",
-							frame_count, machine().time().as_double(),
-							p0_04 ? 1 : 0, rec0_04 ? 1 : 0, m_pc_prev_rec0_flags, rec0_flags,
-							p1_04 ? 1 : 0, rec1_04 ? 1 : 0, m_pc_prev_rec1_flags, rec1_flags,
-							((p0_04 != rec0_04) && (p1_04 != rec1_04)) ? 1 : 0,
-							staging_mode, keepalive, role3ffc);
-
-				// EVENT: op6F role byte change (bit7 = master/emit vs slave/adopt;
-				// SET by screen-mode inits 0x8001E16C/39C/6C0 + staging a0==0/1,
-				// CLEARED only by staging request a0==2 @0x800B2FD4).  The op6F
-				// channel works ONLY when the two cabs' bit7 DIFFER.
-				if (role3ffc != m_pc_prev_role3ffc)
-					logerror("PLAYCLOCK: role3ffc %02x->%02x frame=%u t=%.6f op6fmaster %u->%u mode=%u (bit7 set=0x8001E16C/39C/6C0|0x800B2F9C a0<2; clear=0x800B2FD4 a0==2)\n",
-							m_pc_prev_role3ffc, role3ffc, frame_count, machine().time().as_double(),
-							(m_pc_prev_role3ffc >> 7) & 1, (role3ffc >> 7) & 1, staging_mode);
-
-				// EVENT: rec0 play-clock JUMP (delta outside 0..2) = op6F slave
-				// ADOPTION (0x800B2504-08) or re-init to -1 (0x80013E30-34).
-				// Normal +1/frame ticks are never logged.
-				s32 const d390 = s32(rec0_390 - m_pc_prev_rec0_390);
-				s32 const d394 = s32(rec0_394 - m_pc_prev_rec0_394);
-				if (d390 < 0 || d390 > 2)
-					logerror("PLAYCLOCK: clock-jump rec0_390 %08x->%08x delta=%d frame=%u t=%.6f (adopt @0x800B2504 needs role3ffc bit7=0; reinit=-1 @0x80013E30) role3ffc=%02x\n",
-							m_pc_prev_rec0_390, rec0_390, d390, frame_count, machine().time().as_double(), role3ffc);
-				if (d394 < 0 || d394 > 2)
-					logerror("PLAYCLOCK: clock-jump rec0_394 %08x->%08x delta=%d frame=%u t=%.6f (adopt @0x800B2508; segment-clock zero @0x80104980) role3ffc=%02x\n",
-							m_pc_prev_rec0_394, rec0_394, d394, frame_count, machine().time().as_double(), role3ffc);
-
-				// EVENT: rec1 clocks changing AT ALL (the tick 0x80014CC0 is
-				// LOCAL-record only and op6F adopts into the OWN record, so any
-				// rec1 movement would refute the static model - log every change).
-				if (rec1_390 != m_pc_prev_rec1_390 || rec1_394 != m_pc_prev_rec1_394)
-					logerror("PLAYCLOCK: rec1-clock change 390 %08x->%08x 394 %08x->%08x frame=%u t=%.6f (unexpected: tick+adopt are LOCAL-record only)\n",
-							m_pc_prev_rec1_390, rec1_390, m_pc_prev_rec1_394, rec1_394,
-							frame_count, machine().time().as_double());
-
-				// EVENT: rec0 tick-run start/stop (ticking = +1/+2 per vblank).
-				// A stop names the failing tick gate via the sampled predicates:
-				// pause7570 != 0, or rec0 bit29 set, or the +0x358 obj condition.
-				bool const ticking = (d390 >= 1 && d390 <= 2);
-				if (ticking != m_pc_prev_rec0_ticking)
-					logerror("PLAYCLOCK: tick-%s rec0_390=%08x frame=%u t=%.6f pause7570=%04x rec0bit29=%u mode=%u (tick 0x80014D3C gates: gp+0x7570==0 @0x80014CCC, +0x370 bit29 clear @0x80014D04, obj[+0x358]+9!=0 && +0x54==-1)\n",
-							ticking ? "start" : "stop", rec0_390, frame_count, machine().time().as_double(),
-							pause7570, (rec0_flags >> 29) & 1, staging_mode);
-				m_pc_prev_rec0_ticking = ticking;
-
-				// 1/s window aggregates.
-				if (ticking)
-					++m_pc_ticks390;
-				if (rec0_04 && rec1_04)
-					++m_pc_bit04_both;
-			}
-
-			// 1/s PLAYCLOCK: status - both play-clocks, both bit04s, and every
-			// gate predicate the static map identified, in one grep-decomposable
-			// line.  op6f_tx/op6f_rx are the device cell-walk running counts
-			// (PLAYCLOCK: op6f-tx / op6f-rx lines), with the per-second delta.
-			if (frame_count % 60 == 0)
-			{
-				u32 const op6f_tx = m_c139 ? m_c139->op6f_tx_count() : 0;
-				u32 const op6f_rx = m_c139 ? m_c139->op6f_rx_count() : 0;
-				logerror("PLAYCLOCK: status frame=%u t=%.6f mode=%u localidx=%u rec0_390=%08x rec0_394=%08x rec1_390=%08x rec1_394=%08x ticks390=%u/60 rec0=%08x rec1=%08x bit04_rec0=%u bit04_rec1=%u bit04both=%u/60 role3ffc=%02x op6fmaster=%u gate3502=%02x ka=%u pause7570=%04x framephase=%02x op6f_tx=%u(+%u) op6f_rx=%u(+%u)\n",
-						frame_count, machine().time().as_double(), staging_mode, local_idx,
-						rec0_390, rec0_394, rec1_390, rec1_394, m_pc_ticks390,
-						rec0_flags, rec1_flags, rec0_04 ? 1 : 0, rec1_04 ? 1 : 0, m_pc_bit04_both,
-						role3ffc, (role3ffc >> 7) & 1, gate3502, keepalive, pause7570, framephase,
-						op6f_tx, op6f_tx - m_pc_prev_op6f_tx, op6f_rx, op6f_rx - m_pc_prev_op6f_rx);
-				m_pc_ticks390 = 0;
-				m_pc_bit04_both = 0;
-				m_pc_prev_op6f_tx = op6f_tx;
-				m_pc_prev_op6f_rx = op6f_rx;
-			}
-
-			m_pc_prev_rec0_390   = rec0_390;
-			m_pc_prev_rec0_394   = rec0_394;
-			m_pc_prev_rec1_390   = rec1_390;
-			m_pc_prev_rec1_394   = rec1_394;
-			m_pc_prev_rec0_flags = rec0_flags;
-			m_pc_prev_rec1_flags = rec1_flags;
-			m_pc_prev_role3ffc   = role3ffc;
-			m_pc_have_prev       = true;
-		}
-
-		// P033: READ-ONLY bulk-compose scheduler gate trace (see the member-block
-		// comment for the full static map; every address below is anchored there).
-		// All reads m_mainram only - no write to RAM/ROM/game state anywhere.
-		if (m_trace_composegate)
-		{
-			// Session gates
-			u32 const mode      = m_mainram[0x002F3FD0 / 4];               // 0x802F3FD0 mode (2 = linked gameplay; phase-0 abort @0x80014EA8 if != 2)
-			u32 const ka        = m_mainram[0x002F3FD8 / 4];               // 0x802F3FD8 keepalive (phase-0 abort @0x80014EB4 if 0; zeroed by EVERY teardown)
-			u8  const role      = u8(m_mainram[0x002F3FFC / 4] >> 24);     // role byte (bit0 transfer-active, bit5 phase-0 hold, bit7 op6F master)
-			// Boundary / segment-phase words
-			u32 const rec0_370  = m_mainram[0x002F43D0 / 4];               // rec0 +0x370 (low bits: 0x40 marker / 0x20 engaged)
-			u32 const rec1_370  = m_mainram[0x002F4844 / 4];               // rec1 +0x370
-			u32 const rec0_390  = m_mainram[0x002F43F0 / 4];               // rec0 +0x390 play-clock (op6F pair)
-			u32 const rec0_394  = m_mainram[0x002F43F4 / 4];               // rec0 +0x394 segment clock (op6F pair)
-			// Transfer-screen / phase-machine words
-			u32 const screen    = m_mainram[0x002CED8C / 4];               // gp+0x756C screen state (0x13/0x14 always-transfer, 0x15/0x16 conditional, 6 in-game) [P034 rider: was 0x002CCD8C, a C<->E digit swap - frozen garbage all P033 run]
-			u32 const phase     = m_mainram[0x002CE844 / 4];               // gp+0x7024 phase index (0 handshake, 1 = bulk-compose scheduler)
-			u32 const wait7028  = m_mainram[0x002CE848 / 4];               // gp+0x7028 phase-0 hold countdown (from 0xF0)
-			u32 const trans702c = m_mainram[0x002CE84C / 4];               // gp+0x702C transfer-screen countdown (from 0xF0)
-			u32 const serve7010 = m_mainram[0x002CE830 / 4];               // gp+0x7010 serve flag (0 = re-emit last snapshot @0x80014F94)
-			u32 const done      = m_mainram[0x002CE834 / 4];               // gp+0x7014 done/abort latch (1 = phase 1 dead @0x80014F4C)
-			u32 const wdog      = m_mainram[0x002CE838 / 4];               // gp+0x7018 phase-1 watchdog (300 frames)
-			u32 const idle      = m_mainram[0x002CE83C / 4];               // gp+0x701C request-idle streak (>= 0x20 -> teardown)
-			s16 const reqid     = s16(m_mainram[0x002CE840 / 4] >> 16);    // gp+0x7020 snapshot request id (-1 = none; latched @0x800151D0 from peer op-0x1A)
-			u16 const entered   = u16(m_mainram[0x002CE854 / 4] >> 16);    // gp+0x7034 join-entered latch
-			u16 const bypass    = u16(m_mainram[0x002CE854 / 4]);          // gp+0x7036 transfer bypass selector (!=0 -> screen 0x16 skips the phase machine)
-			u32 const round703c = m_mainram[0x002CE85C / 4];               // gp+0x703C round state (table 0x8022A78C)
-			u32 const sub7040   = m_mainram[0x002CE860 / 4];               // gp+0x7040 round sub-state
-			u32 const timer7054 = m_mainram[0x002CE874 / 4];               // gp+0x7054 round/link timer (op-0x70 clamped)
-			u32 const code7074  = m_mainram[0x002CE894 / 4];               // gp+0x7074 link status code (2 = fully linked, op55-fed)
-			// Compose output + TX pump state
-			u16 const len3910   = u16(m_mainram[0x002F3910 / 4] >> 16);    // 0x802F3910 composed VM frame length (finalize 0x800AA76C; > 0xFF = bulk class)
-			u8  const gate3d12  = u8(m_mainram[0x002F3D10 / 4] >> 8);      // 0x802F3D12 finalize gate byte (4 = gameplay table when mode==2, 3 otherwise)
-			u16 const txrem     = u16(m_mainram[0x002CEDE0 / 4] >> 16);    // gp+0x75C0 TX pump remaining-size (chunking in flight)
-			u16 const txkick    = u16(m_mainram[0x002CEDE4 / 4]);          // gp+0x75C6 TX pump kick/budget counter (PATH C announce while > 0)
-			u16 const servedid  = u16(m_mainram[0x002DFB40 / 4]);          // 0x802DFB42 outstanding served/echo id (-1 = none)
-			u8  const gate3502  = u8(m_mainram[0x002F3500 / 4] >> 8);      // 0x802F3502 peer TX gate (existing anchor)
-			u16 const drift3504 = u16(m_mainram[0x002F3504 / 4] >> 16);    // 0x802F3504 drift (existing anchor)
-
-			bool const serving_capable = (screen == 0x14 || (screen == 0x16 && bypass == 0)) && phase == 1 && done == 0;
-
-			if (m_cg_have_prev)
-			{
-				// EVENT: area-word 0x40 (marker) / 0x20 (engaged) transition on
-				// EITHER record = the boundary marker.  One line dumping EVERY
-				// identified gate word so a composed boundary and a skipped one
-				// can be diffed field-by-field from single lines.
-				if (((rec0_370 ^ m_cg_prev_rec0_370) & 0x60) || ((rec1_370 ^ m_cg_prev_rec1_370) & 0x60))
-					logerror("COMPOSEGATE: boundary frame=%u t=%.6f rec0 %08x->%08x rec1 %08x->%08x mode=%u ka=%u role=%02x screen=%02x phase=%u done=%u wdog=%d idle=%u reqid=%d serve7010=%u bypass=%04x entered=%04x wait7028=%d trans702c=%d round703c=%u sub7040=%u code7074=%u timer7054=%08x clk390=%08x clk394=%08x len3910=%u gate3d12=%02x txkick=%u txrem=%u servedid=%04x gate3502=%02x drift=%04x\n",
-							frame_count, machine().time().as_double(),
-							m_cg_prev_rec0_370, rec0_370, m_cg_prev_rec1_370, rec1_370,
-							mode, ka, role, screen, phase, done, s32(wdog), idle, reqid, serve7010,
-							bypass, entered, s32(wait7028), s32(trans702c), round703c, sub7040, code7074,
-							timer7054, rec0_390, rec0_394, len3910, gate3d12, txkick, txrem, servedid,
-							gate3502, drift3504);
-
-				// EVENT: transfer-screen / phase-machine transitions (screen 0x13/
-				// 0x14/0x15/0x16 entry+exit, phase 0->1, done/abort latch edges).
-				// done 0->1 while screen 0x14/0x16 = the phase-0 abort @0x80014EC0
-				// or the phase-1 teardown @0x8001511C (wdog/idle tell which).
-				if (screen != m_cg_prev_screen || phase != m_cg_prev_phase || done != m_cg_prev_done)
-					logerror("COMPOSEGATE: phase frame=%u t=%.6f screen %02x->%02x phase %u->%u done %u->%u mode=%u ka=%u role=%02x wdog=%d idle=%u reqid=%d bypass=%04x wait7028=%d trans702c=%d serving_capable=%u\n",
-							frame_count, machine().time().as_double(),
-							m_cg_prev_screen, screen, m_cg_prev_phase, phase, m_cg_prev_done, done,
-							mode, ka, role, s32(wdog), idle, reqid, bypass,
-							s32(wait7028), s32(trans702c), serving_capable ? 1 : 0);
-
-				// EVENT: snapshot request id change (peer op-0x1A latched a new id,
-				// or phase-1 entry cleared it back to -1 with no request pending).
-				if (reqid != m_cg_prev_reqid)
-					logerror("COMPOSEGATE: request frame=%u t=%.6f reqid %d->%d idle=%u serve7010=%u servedid=%04x screen=%02x phase=%u done=%u len3910=%u\n",
-							frame_count, machine().time().as_double(),
-							m_cg_prev_reqid, reqid, idle, serve7010, servedid, screen, phase, done, len3910);
-
-				// EVENT: a bulk-class VM frame was composed this frame (the direct
-				// upstream analog of the device's >255hw TXOFFSET bulk announce).
-				// Logged on value change only so a stalled length is not re-logged.
-				if (len3910 > 0xFF && len3910 != m_cg_prev_len)
-					logerror("COMPOSEGATE: bulkframe frame=%u t=%.6f len3910=%u gate3d12=%02x screen=%02x phase=%u done=%u reqid=%d idle=%u mode=%u ka=%u rec0=%08x rec1=%08x\n",
-							frame_count, machine().time().as_double(),
-							len3910, gate3d12, screen, phase, done, reqid, idle, mode, ka, rec0_370, rec1_370);
-
-				// EVENT: session gate movement (mode change, keepalive zero-edge
-				// either way, role-byte change).  ka 0-edges bracket every transfer
-				// teardown (@0x80014EC8/0x80015128) and each op55 re-establishment.
-				if (mode != m_cg_prev_mode || (ka == 0) != (m_cg_prev_ka == 0) || role != m_cg_prev_role || bypass != m_cg_prev_bypass)
-					logerror("COMPOSEGATE: session frame=%u t=%.6f mode %u->%u ka %u->%u role %02x->%02x bypass %04x->%04x screen=%02x phase=%u done=%u\n",
-							frame_count, machine().time().as_double(),
-							m_cg_prev_mode, mode, m_cg_prev_ka, ka, m_cg_prev_role, role,
-							m_cg_prev_bypass, bypass, screen, phase, done);
-
-				// 1/s window aggregates.
-				if (len3910 > 0xFF)
-					++m_cg_win_bulkframes;
-				if (reqid != -1)
-					++m_cg_win_reqframes;
-				if (serving_capable)
-					++m_cg_win_phase1;
-				if (len3910 > m_cg_win_maxlen)
-					m_cg_win_maxlen = len3910;
-			}
-
-			// 1/s COMPOSEGATE: status - every gate word + the window counters, one
-			// grep-decomposable line.
-			if (frame_count % 60 == 0)
-			{
-				logerror("COMPOSEGATE: status frame=%u t=%.6f mode=%u ka=%u role=%02x screen=%02x phase=%u done=%u wdog=%d idle=%u reqid=%d serve7010=%u bypass=%04x entered=%04x round703c=%u sub7040=%u code7074=%u timer7054=%08x rec0=%08x rec1=%08x clk390=%08x clk394=%08x len3910=%u gate3d12=%02x txkick=%u txrem=%u servedid=%04x gate3502=%02x drift=%04x bulkframes=%u/60 reqframes=%u/60 phase1=%u/60 maxlen=%u\n",
-						frame_count, machine().time().as_double(),
-						mode, ka, role, screen, phase, done, s32(wdog), idle, reqid, serve7010,
-						bypass, entered, round703c, sub7040, code7074, timer7054,
-						rec0_370, rec1_370, rec0_390, rec0_394, len3910, gate3d12,
-						txkick, txrem, servedid, gate3502, drift3504,
-						m_cg_win_bulkframes, m_cg_win_reqframes, m_cg_win_phase1, m_cg_win_maxlen);
-				m_cg_win_bulkframes = 0;
-				m_cg_win_reqframes = 0;
-				m_cg_win_phase1 = 0;
-				m_cg_win_maxlen = 0;
-			}
-
-			m_cg_prev_rec0_370 = rec0_370;
-			m_cg_prev_rec1_370 = rec1_370;
-			m_cg_prev_screen   = screen;
-			m_cg_prev_phase    = phase;
-			m_cg_prev_done     = done;
-			m_cg_prev_reqid    = reqid;
-			m_cg_prev_len      = len3910;
-			m_cg_prev_mode     = mode;
-			m_cg_prev_ka       = ka;
-			m_cg_prev_role     = role;
-			m_cg_prev_bypass   = bypass;
-			m_cg_have_prev     = true;
-		}
-
-		// P034: READ-ONLY round-end trigger / join-precondition trace (see the
-		// member-block comment for the full static map; every address below is
-		// anchored there).  All reads m_mainram only - no write anywhere.
-		if (m_trace_roundend)
-		{
-			// Session / role words
-			u32 const mode      = m_mainram[0x002F3FD0 / 4];               // 0x802F3FD0 mode (2 = linked)
-			u32 const ka        = m_mainram[0x002F3FD8 / 4];               // 0x802F3FD8 keepalive
-			u8  const role      = u8(m_mainram[0x002F3FFC / 4] >> 24);     // role byte (bit1 = join-armer gate, bit7 = op6F master)
-			u32 const screen    = m_mainram[0x002CED8C / 4];               // gp+0x756C screen state (correct address)
-			u32 const idx7608   = m_mainram[0x002CEE28 / 4];               // gp+0x7608 local player index (record selector)
-			// Per-record round-end trigger words (rec0 = 0x802F4060, rec1 = +0x474)
-			u32 const p370[2]   = { m_mainram[0x002F43D0 / 4], m_mainram[0x002F4844 / 4] };  // +0x370 flags (0x2000 round-end mode, 0x6000 advertise, 0x40010800 checker gate A, 0x04 co-op)
-			u32 const f5c[2]    = { m_mainram[0x002F40BC / 4], m_mainram[0x002F4530 / 4] };  // +0x5C flags (bit0 = checker gate B)
-			u16 const os37a[2]  = { u16(m_mainram[0x002F43D8 / 4]), u16(m_mainram[0x002F484C / 4]) };            // +0x37A one-shots (bit0 checker C, bit1 round-consumed)
-			s16 const c3a0[2]   = { s16(m_mainram[0x002F4400 / 4] >> 16), s16(m_mainram[0x002F4874 / 4] >> 16) };// +0x3A0 checker gate-E countdown
-			s16 const wd3a2[2]  = { s16(m_mainram[0x002F4400 / 4]), s16(m_mainram[0x002F4874 / 4]) };            // +0x3A2 area time-limit watchdog
-			u32 const clk394[2] = { m_mainram[0x002F43F4 / 4], m_mainram[0x002F4868 / 4] };  // +0x394 segment clock (re-base target)
-			u32 const clk388[2] = { m_mainram[0x002F43E8 / 4], m_mainram[0x002F485C / 4] };  // +0x388 (re-base fingerprint partner cell)
-			// Round machine globals
-			u32 const r703c     = m_mainram[0x002CE85C / 4];               // gp+0x703C round state
-			u32 const r7040     = m_mainram[0x002CE860 / 4];               // gp+0x7040 round sub-state
-			u32 const g705c     = m_mainram[0x002CE87C / 4];               // gp+0x705C 0x4000-advertise gate (0 -> tail sets 0x4000)
-			u32 const t7054     = m_mainram[0x002CE874 / 4];               // gp+0x7054 round timer
-			u32 const h7064     = m_mainram[0x002CE884 / 4];               // gp+0x7064 state-4/5 hold countdown
-			u32 const c7068     = m_mainram[0x002CE888 / 4];               // gp+0x7068 state-1 frame counter (0x47 clears 705C)
-			u32 const c7074     = m_mainram[0x002CE894 / 4];               // gp+0x7074 link status code
-			// Join-armer precondition words
-			u16 const ent7034   = u16(m_mainram[0x002CE854 / 4] >> 16);    // gp+0x7034 entered latch
-			u16 const byp7036   = u16(m_mainram[0x002CE854 / 4]);          // gp+0x7036 bypass selector
-			u32 const arm7624   = m_mainram[0x002CEE44 / 4];               // gp+0x7624 join arm-enable
-			u32 const g75f8     = m_mainram[0x002CEE18 / 4];               // gp+0x75F8 global flags (bit2 blocks the watchdog path)
-			u8  const cfg75e4   = u8(m_mainram[0x002CEE04 / 4] >> 24);     // gp+0x75E4 config byte (+0x3A0 init value)
-			u16 const g6ff4     = u16(m_mainram[0x002CE814 / 4] >> 16);    // gp+0x6FF4 join-event countdown (0x80013EF8 sets 2)
-			u8  const coop      = ((p370[0] | p370[1]) & 0x04) ? 1 : 0;    // join-armer co-op gate term
-			u8  const ctr74f0lo = u8(m_mainram[0x002CED10 / 4]);           // gp+0x74F3 = frame counter low byte (op6F cadence gate)
-
-			if (m_re_have_prev)
-			{
-				// EVENT: round machine walked (state/sub-state/advertise-gate/
-				// link-code edges).  round703c 0->1 = state-0 handler ran =
-				// LOCAL record entered round-end mode last frame.
-				if (r703c != m_re_prev_703c || r7040 != m_re_prev_7040 || g705c != m_re_prev_705c || c7074 != m_re_prev_7074)
-					logerror("ROUNDEND: round frame=%u t=%.6f state703c %u->%u sub7040 %u->%u gate705c %u->%u code7074 %u->%u cnt7068=%u timer7054=%08x hold7064=%d rec0_370=%08x rec1_370=%08x mode=%u ka=%u\n",
-							frame_count, machine().time().as_double(),
-							m_re_prev_703c, r703c, m_re_prev_7040, r7040, m_re_prev_705c, g705c,
-							m_re_prev_7074, c7074, c7068, t7054, s32(h7064), p370[0], p370[1], mode, ka);
-
-				for (int r = 0; r < 2; r++)
-				{
-					// EVENT: +0x370 trigger-relevant bit movement (round-end
-					// mode 0x2000, advertise 0x6000, checker gate-A bits
-					// 0x40010800, co-op 0x04, 2P 0x02, mirror marks
-					// 0xC0000000).  Marker bits 0x60 stay COMPOSEGATE's job.
-					if ((p370[r] ^ m_re_prev_p370[r]) & 0xC0016806)
-						logerror("ROUNDEND: mode2000 frame=%u t=%.6f rec=%d p370 %08x->%08x adv6000 %u->%u mode2000 %u->%u gateA %u->%u coop04=%u round703c=%u\n",
-								frame_count, machine().time().as_double(), r,
-								m_re_prev_p370[r], p370[r],
-								(m_re_prev_p370[r] & 0x6000) == 0x6000 ? 1 : 0, (p370[r] & 0x6000) == 0x6000 ? 1 : 0,
-								(m_re_prev_p370[r] >> 13) & 1, (p370[r] >> 13) & 1,
-								(m_re_prev_p370[r] & 0x40010800) ? 1 : 0, (p370[r] & 0x40010800) ? 1 : 0,
-								coop, r703c);
-
-					// EVENT: checker activity fingerprint - +0x3A0 changes on
-					// every 0x80026E00 call that got past gate D, +0x37A edges
-					// on one-shot latch/clear (0x80026E48 / 0x80014928 bit0,
-					// 0x80014B98 / 0x80014DA4 bit1).  A bit0 0->1 WITHOUT a
-					// same-frame round703c walk = the one-shot BURNED (gate E
-					// failed) - the suspected red killer.
-					if (c3a0[r] != m_re_prev_3a0[r] || os37a[r] != m_re_prev_37a[r])
-						logerror("ROUNDEND: checker frame=%u t=%.6f rec=%d cnt3a0 %d->%d oneshot37a %04x->%04x wd3a2=%d flags5c=%08x p370=%08x round703c=%u\n",
-								frame_count, machine().time().as_double(), r,
-								s32(m_re_prev_3a0[r]), s32(c3a0[r]), m_re_prev_37a[r], os37a[r],
-								s32(wd3a2[r]), f5c[r], p370[r], r703c);
-
-					// EVENT: +0x5C gate-B-relevant bit movement (bit0 checker
-					// gate B, bit3 from +0x370 bit16 @0x80014A20-48, bit16
-					// toggle 0x80013C20-50).
-					if ((f5c[r] ^ m_re_prev_5c[r]) & 0x00010009)
-						logerror("ROUNDEND: flags5c frame=%u t=%.6f rec=%d f5c %08x->%08x bit0 %u->%u p370=%08x\n",
-								frame_count, machine().time().as_double(), r,
-								m_re_prev_5c[r], f5c[r], m_re_prev_5c[r] & 1, f5c[r] & 1, p370[r]);
-
-					// EVENT: area time-limit watchdog expiry (the 0x80014BA8
-					// path's gate) or re-arm (0x80014DEC, desc[9]*60 frames).
-					if ((m_re_prev_3a2[r] > 0 && wd3a2[r] <= 0) || wd3a2[r] > m_re_prev_3a2[r])
-						logerror("ROUNDEND: wd3a2 frame=%u t=%.6f rec=%d wd3a2 %d->%d flags5c=%08x oneshot37a=%04x p75f8=%08x round703c=%u\n",
-								frame_count, machine().time().as_double(), r,
-								s32(m_re_prev_3a2[r]), s32(wd3a2[r]), f5c[r], os37a[r], g75f8, r703c);
-
-					// EVENT: segment-clock re-base - +0x394 zero-edge.  BOTH
-					// records' +0x394 AND +0x388 zeroed in the same frame is
-					// the 0x80104958 fingerprint (writer PC is not observable
-					// from a RAM sampler; attribution is static).
-					if (m_re_prev_394[r] != 0 && clk394[r] == 0)
-						logerror("ROUNDEND: rebase frame=%u t=%.6f rec=%d clk394 %08x->0 rec0_394=%08x rec1_394=%08x rec0_388=%08x rec1_388=%08x round703c=%u sub7040=%u\n",
-								frame_count, machine().time().as_double(), r,
-								m_re_prev_394[r], clk394[0], clk394[1], clk388[0], clk388[1], r703c, r7040);
-				}
-
-				// EVENT: join-armer precondition movement (entered gp+0x7034,
-				// arm-enable gp+0x7624 zero-edge, role-byte change - bit1 is
-				// the statically-dead G10 gate - co-op bit04, event countdown
-				// gp+0x6FF4).
-				if (ent7034 != m_re_prev_7034 || (arm7624 == 0) != (m_re_prev_7624 == 0) || role != m_re_prev_role
-						|| coop != m_re_prev_coop || g6ff4 != m_re_prev_6ff4)
-					logerror("ROUNDEND: join frame=%u t=%.6f entered7034 %04x->%04x bypass7036=%04x arm7624 %08x->%08x role %02x->%02x bit1=%u bit7=%u coop04 %u->%u g6ff4 %04x->%04x screen=%02x\n",
-							frame_count, machine().time().as_double(),
-							m_re_prev_7034, ent7034, byp7036, m_re_prev_7624, arm7624,
-							m_re_prev_role, role, (role >> 1) & 1, (role >> 7) & 1,
-							m_re_prev_coop, coop, m_re_prev_6ff4, g6ff4, screen);
-
-				// EVENT: op6F cadence window opened ((frame ctr & 0xFF) == 0).
-				// Emit expected this frame iff ka>0 && role bit7 (0x800B22CC).
-				if (ctr74f0lo == 0 && m_re_prev_74f0lo != 0)
-					logerror("ROUNDEND: op6fwin frame=%u t=%.6f ka=%u rolebit7=%u round703c=%u clk390=%08x clk394=%08x\n",
-							frame_count, machine().time().as_double(),
-							ka, (role >> 7) & 1, r703c, m_mainram[0x002F43F0 / 4], clk394[0]);
-
-				// EVENT: local player index changed (should never happen
-				// in-session; would rewrite the whole record-ownership model).
-				if (idx7608 != m_re_prev_7608)
-					logerror("ROUNDEND: idx frame=%u t=%.6f idx7608 %u->%u role=%02x mode=%u ka=%u\n",
-							frame_count, machine().time().as_double(),
-							m_re_prev_7608, idx7608, role, mode, ka);
-			}
-
-			// 1/s ROUNDEND: status - the whole trigger chain in one line.
-			if (frame_count % 60 == 0)
-				logerror("ROUNDEND: status frame=%u t=%.6f idx=%u role=%02x(b1=%u b7=%u) mode=%u ka=%u screen=%02x round703c=%u sub7040=%u g705c=%u code7074=%u cnt7068=%u hold7064=%d timer7054=%08x entered7034=%04x bypass7036=%04x arm7624=%08x coop04=%u g6ff4=%04x cfg75e4=%02x p75f8=%08x ctr74f0lo=%02x rec0[370=%08x 5c=%08x 37a=%04x 3a0=%d 3a2=%d 394=%08x] rec1[370=%08x 5c=%08x 37a=%04x 3a0=%d 3a2=%d 394=%08x]\n",
-						frame_count, machine().time().as_double(),
-						idx7608, role, (role >> 1) & 1, (role >> 7) & 1, mode, ka, screen,
-						r703c, r7040, g705c, c7074, c7068, s32(h7064), t7054,
-						ent7034, byp7036, arm7624, coop, g6ff4, cfg75e4, g75f8, ctr74f0lo,
-						p370[0], f5c[0], os37a[0], s32(c3a0[0]), s32(wd3a2[0]), clk394[0],
-						p370[1], f5c[1], os37a[1], s32(c3a0[1]), s32(wd3a2[1]), clk394[1]);
-
-			for (int r = 0; r < 2; r++)
-			{
-				m_re_prev_p370[r] = p370[r];
-				m_re_prev_5c[r]   = f5c[r];
-				m_re_prev_37a[r]  = os37a[r];
-				m_re_prev_3a0[r]  = c3a0[r];
-				m_re_prev_3a2[r]  = wd3a2[r];
-				m_re_prev_394[r]  = clk394[r];
-			}
-			m_re_prev_703c   = r703c;
-			m_re_prev_7040   = r7040;
-			m_re_prev_705c   = g705c;
-			m_re_prev_7074   = c7074;
-			m_re_prev_7034   = ent7034;
-			m_re_prev_7624   = arm7624;
-			m_re_prev_role   = role;
-			m_re_prev_7608   = idx7608;
-			m_re_prev_75f8   = g75f8;
-			m_re_prev_6ff4   = g6ff4;
-			m_re_prev_coop   = coop;
-			m_re_prev_74f0lo = ctr74f0lo;
-			m_re_have_prev   = true;
-		}
-
-		// P036 EXPERIMENT (branch patch/round-arm, off patch/latch-v2-snapshot):
-		// ROUND-ARM ASSIST - see the member-block comment for the full design
-		// and safety rails.  The project's FIRST functional write to game work
-		// RAM beyond the P001 keepalive floor, and by construction its
-		// narrowest: ONE halfword (rec0+0x3A0 <- 1, the ROM's own fire-now
-		// idiom, wrapper 0x800D1668 @0x800D16A8) at the score/result window
-		// exit, one-shot per window, never retried, no other address written
-		// on any path.  Ordered AFTER the P034 ROUNDEND tap so a stacked-trace
-		// run samples the pristine pre-write state in the same frame (the tap
-		// then reports our write as a cnt3a0 edge one frame later - join
-		// ROUNDARM: fired to ROUNDEND: checker by frame=).  Inert unset.
-		// Experiment branch only - never merge to milestone.
-		if (m_patch_roundarm)
-		{
-			u32 const mode    = m_mainram[0x002F3FD0 / 4];            // 0x802F3FD0 staging mode (2 = linked)
-			u32 const ka      = m_mainram[0x002F3FD8 / 4];            // 0x802F3FD8 keepalive
-			u32 const idx7608 = m_mainram[0x002CEE28 / 4];            // gp+0x7608 local player index (record-0 model fence)
-			u32 const p370_0  = m_mainram[0x002F43D0 / 4];            // rec0 +0x370 (OWN record while idx==0)
-			u32 const p370_1  = m_mainram[0x002F4844 / 4];            // rec1 +0x370 (partner mirror, 0xC0000000-marked)
-			u32 const r703c   = m_mainram[0x002CE85C / 4];            // gp+0x703C round state (0 = round machine idle)
-			u16 const os37a   = u16(m_mainram[0x002F43D8 / 4]);       // rec0 +0x37A one-shot halfword (bit0 gate C, bit1 consumed)
-			u32 const w3a0    = m_mainram[0x002F4400 / 4];            // rec0 +0x3A0 (hi lane) / +0x3A2 (lo lane) word
-			s16 const c3a0    = s16(w3a0 >> 16);                      // +0x3A0 checker gate-E countdown (the ONE write target)
-			s16 const wd3a2   = s16(w3a0);                            // +0x3A2 area watchdog (lo lane - NEVER touched)
-			u8  const cfg75e4 = u8(m_mainram[0x002CEE04 / 4] >> 24);  // gp+0x75E4 countdown init value (log only)
-
-			// The MUTUAL score/result signature (derivation in the member
-			// comment).  OWN: result-class bit26 + bit16 + 0x40 marker set;
-			// mirror-marks/bit23-strobe/0x6000/0x800/0x80/0x20 clear.
-			// MIRROR: same with the 0xC0000000 ingest marks ignored.
-			// Requiring BOTH records kills the 06018042 walking-state
-			// collision (an own-only mask provably cannot).
-			bool const own_sig  = (p370_0 & 0xC48168E0) == 0x04010040;
-			bool const mir_sig  = (p370_1 & 0x048168E0) == 0x04010040;
-			bool const full_sig = own_sig && mir_sig && mode == 2 && ka > 0 && idx7608 == 0;
-			bool const b16_edge = (m_ra_prev_p370 & 0x00010000) != 0 && (p370_0 & 0x00010000) == 0;
-
-			// Round-entry edge, any source.  Post-fire it closes the
-			// non-retry watch (success); otherwise it documents a natural
-			// entry.  Checked BEFORE the overwrite test: round result-1
-			// (0x80016C54) legitimately re-inits cnt3a0 to cfg75e4 while the
-			// round machine walks - that must never read as an overwrite.
-			if (m_ra_prev_703c == 0 && r703c != 0)
-			{
-				++m_ra_cnt_entered;
-				logerror("ROUNDARM: entered frame=%u t=%.6f source=%s round703c=%u dt_frames=%d p370=%08x cnt3a0=%d wd3a2=%d entered_total=%u\n",
-						frame_count, machine().time().as_double(),
-						m_ra_fire_pending ? "post-fire" : "natural", r703c,
-						m_ra_fire_pending ? s32(frame_count - m_ra_fire_frame) : -1,
-						p370_0, s32(c3a0), s32(wd3a2), m_ra_cnt_entered);
-				m_ra_fire_pending = false;
-			}
-			// NON-RETRY rail: our planted 1 was overwritten (record re-init
-			// raised the countdown) before any checker call consumed it.
-			// Log once and stand down - NEVER rewrite (no P025-style fight).
-			else if (m_ra_fire_pending && r703c == 0 && s32(c3a0) > 1)
-			{
-				++m_ra_cnt_overwritten;
-				logerror("ROUNDARM: overwritten frame=%u t=%.6f cnt3a0=%d (planted 1 @frame %u, %u frames ago) wd3a2=%d p370=%08x round703c=%u overwritten_total=%u - write did not stick, NO retry\n",
-						frame_count, machine().time().as_double(), s32(c3a0),
-						m_ra_fire_frame, frame_count - m_ra_fire_frame,
-						s32(wd3a2), p370_0, r703c, m_ra_cnt_overwritten);
-				m_ra_fire_pending = false;
-			}
-			// Session ended (teardown/quit) with a fire still pending: clear
-			// the watch so a later session's entry edge is not mislabeled.
-			else if (m_ra_fire_pending && (mode != 2 || ka == 0))
-			{
-				++m_ra_cnt_skipped;
-				logerror("ROUNDARM: skipped frame=%u t=%.6f reason=pending-cleared-session-end mode=%u ka=%u cnt3a0=%d round703c=%u skipped_total=%u\n",
-						frame_count, machine().time().as_double(), mode, ka,
-						s32(c3a0), r703c, m_ra_cnt_skipped);
-				m_ra_fire_pending = false;
-			}
-
-			if (m_ra_wait_reentry)
-			{
-				// Window consumed: re-arm only after the FULL signature has
-				// been absent >= 60 consecutive frames and then re-enters
-				// (debounced window boundary - a bounce inside the same score
-				// screen cannot re-fire; the next stage boundary, minutes
-				// away, legitimately re-arms).
-				if (full_sig)
-					m_ra_gap_frames = 0;
-				else if (++m_ra_gap_frames >= 60)
-					m_ra_wait_reentry = false;
-			}
-			else if (!m_ra_armed)
-			{
-				if (full_sig)
-				{
-					m_ra_armed = true;
-					m_ra_armed_frame = frame_count;
-					++m_ra_cnt_armed;
-					logerror("ROUNDARM: armed frame=%u t=%.6f rec0_370=%08x rec1_370=%08x cnt3a0=%d wd3a2=%d oneshot37a=%04x round703c=%u mode=%u ka=%u cfg75e4=%02x armed_total=%u\n",
-							frame_count, machine().time().as_double(), p370_0, p370_1,
-							s32(c3a0), s32(wd3a2), os37a, r703c, mode, ka, cfg75e4,
-							m_ra_cnt_armed);
-				}
-				else if (b16_edge && m_ra_prev_own_sig)
-				{
-					// Diagnostic: the own-record window closed before the
-					// mirror ever matched (the mutual signature never
-					// formed).  No write - but consume the window so a late
-					// bounce cannot arm on stale state.
-					++m_ra_cnt_skipped;
-					m_ra_wait_reentry = true;
-					m_ra_gap_frames = 0;
-					logerror("ROUNDARM: skipped frame=%u t=%.6f reason=unarmed-window p370 %08x->%08x rec1_370=%08x cnt3a0=%d wd3a2=%d oneshot37a=%04x round703c=%u mode=%u ka=%u skipped_total=%u\n",
-							frame_count, machine().time().as_double(), m_ra_prev_p370,
-							p370_0, p370_1, s32(c3a0), s32(wd3a2), os37a, r703c, mode,
-							ka, m_ra_cnt_skipped);
-				}
-			}
-			else // armed - waiting for the bit16-clear window exit
-			{
-				if (b16_edge)
-				{
-					// The window exit.  Evaluate the fire fences in order;
-					// plant the ROM's fire-now value or skip (log-only).
-					// The window is consumed either way.
-					char const *reason = nullptr;
-					if (idx7608 != 0)                    reason = "localidx-nonzero";
-					else if (r703c != 0)                 reason = "round703c-nonzero";
-					else if (mode != 2)                  reason = "mode-not-2";
-					else if (ka == 0)                    reason = "ka-zero";
-					else if (os37a != 0)                 reason = "oneshot37a-nonzero";
-					else if ((p370_0 & 0xC0006800) != 0) reason = "p370-postedge-dirty";
-					else if (s32(c3a0) == 1)             reason = "cnt3a0-already-1";
-					else if (s32(c3a0) <= 0)             reason = "cnt3a0-lez-checker-firing";
-					else if (s32(c3a0) > 15)             reason = "cnt3a0-insane";
-
-					if (!reason)
-					{
-						// THE WRITE - the only game-RAM store this experiment
-						// ever performs: rec0+0x3A0 <- 1 (hi halfword of the
-						// word at 0x802F4400), the +0x3A2 watchdog lo
-						// halfword preserved bit-exactly.
-						u32 const post = (w3a0 & 0x0000FFFFu) | 0x00010000u;
-						m_mainram[0x002F4400 / 4] = post;
-						++m_ra_cnt_fired;
-						m_ra_fire_pending = true;
-						m_ra_fire_frame = frame_count;
-						logerror("ROUNDARM: fired frame=%u t=%.6f p370 %08x->%08x cnt3a0 %d->1 word3a0 %08x->%08x wd3a2=%d oneshot37a=%04x round703c=%u mode=%u ka=%u fired_total=%u\n",
-								frame_count, machine().time().as_double(), m_ra_prev_p370,
-								p370_0, s32(c3a0), w3a0, post, s32(wd3a2), os37a, r703c,
-								mode, ka, m_ra_cnt_fired);
-					}
-					else
-					{
-						++m_ra_cnt_skipped;
-						logerror("ROUNDARM: skipped frame=%u t=%.6f reason=%s p370 %08x->%08x cnt3a0=%d wd3a2=%d oneshot37a=%04x round703c=%u mode=%u ka=%u skipped_total=%u\n",
-								frame_count, machine().time().as_double(), reason,
-								m_ra_prev_p370, p370_0, s32(c3a0), s32(wd3a2), os37a,
-								r703c, mode, ka, m_ra_cnt_skipped);
-					}
-					m_ra_armed = false;
-					m_ra_wait_reentry = true;
-					m_ra_gap_frames = 0;
-				}
-				else if (frame_count - m_ra_armed_frame > 300)
-				{
-					// Edge-timeout: the armed window never presented the
-					// bit16-clear exit within 5 s (real score flashes exit in
-					// 0.6-1.9 s).  Disarm WITHOUT writing - protects against
-					// an unforeseen bit16-held exit path turning a stale arm
-					// into a mid-stage fire.
-					++m_ra_cnt_skipped;
-					m_ra_armed = false;
-					m_ra_wait_reentry = true;
-					m_ra_gap_frames = 0;
-					logerror("ROUNDARM: disarmed frame=%u t=%.6f reason=edge-timeout held=%u rec0_370=%08x rec1_370=%08x cnt3a0=%d round703c=%u mode=%u ka=%u skipped_total=%u\n",
-							frame_count, machine().time().as_double(),
-							frame_count - m_ra_armed_frame, p370_0, p370_1,
-							s32(c3a0), r703c, mode, ka, m_ra_cnt_skipped);
-				}
-			}
-
-			// 1/s status - ONLY while linked gameplay is staged (mode == 2).
-			if (mode == 2 && frame_count % 60 == 0)
-				logerror("ROUNDARM: status frame=%u t=%.6f mode=%u ka=%u armed=%u wait_reentry=%u fire_pending=%u round703c=%u rec0_370=%08x rec1_370=%08x cnt3a0=%d wd3a2=%d oneshot37a=%04x cfg75e4=%02x totals[armed=%u fired=%u entered=%u skipped=%u overwritten=%u]\n",
-						frame_count, machine().time().as_double(), mode, ka,
-						m_ra_armed ? 1u : 0u, m_ra_wait_reentry ? 1u : 0u,
-						m_ra_fire_pending ? 1u : 0u, r703c, p370_0, p370_1,
-						s32(c3a0), s32(wd3a2), os37a, cfg75e4,
-						m_ra_cnt_armed, m_ra_cnt_fired, m_ra_cnt_entered,
-						m_ra_cnt_skipped, m_ra_cnt_overwritten);
-
-			m_ra_prev_p370 = p370_0;
-			m_ra_prev_own_sig = own_sig;
-			m_ra_prev_703c = r703c;
-		}
+		// Retained P003/P008 arming-mechanism knowledge (the forced partner
+		// re-arm experiments patch/round-start-arm and patch/continuous-arm
+		// were dropped - P012 pure-destack CONFIRMED the ROM arms the partner
+		// naturally once the transport holds - and removed in P072; ROM
+		// provenance from full.txt via the 2026-06-10 investigation log):
+		// round-start 0x80013058 samples the keepalive word 0x802F3FD8 ONCE
+		// (blez 0x8001313C) and only then ORs bit 0x40000000 ("ingest armed")
+		// into the partner record's +0x370 word; the within-frame
+		// COM-fallback 0x800B2A58-98 clears bits 0x40000000|0x2000 whenever
+		// the keepalive drains; NO ROM path re-arms mid-stage (refill
+		// 0x800B29E8 / top-up 0x80023840-58 touch only the counter; op55 /
+		// the 0x80020xxx handshake never run mid-stage).  The op02 coordinate
+		// import gate 0x800AB3B8-C4 reads that partner bit30 each frame.
+		// Addresses as in the P001 block above.
 
 		// P040b: the VERIFY-BEFORE-POKE RAM-CODE NOP (mechanism amendment of
 		// the P040 store filter - full rationale + the VERIFIED DRC
@@ -8421,7 +6168,7 @@ void namcos23_state::vblank(int state)
 		// guard).  Poking here - within the first seconds of boot - precedes
 		// the receiver's first execution (link-up, ~56 s+), so the DRC
 		// compiles its block from the already-NOPed RAM and needs no
-		// invalidation on this path; the 1/s guard in the status block below
+		// invalidation on this path; the 1/s guard below
 		// covers re-materialization.
 		if (m_patch_op6f_no394b && !m_no394b_poked && !m_no394b_refused)
 		{
@@ -8467,66 +6214,6 @@ void namcos23_state::vblank(int state)
 				m_no390b_refused = true;
 				logerror("OP6F_NO390B: REFUSED @0x800B2504 found=%08x expected=AC470390 frame=%u t=%.6f - ROM-revision guard: staying inert (no poke ever; falsifier + status stay armed)\n",
 						word, frame_count, machine().time().as_double());
-			}
-		}
-
-		// P043: the WAVE-INIT HOLD verify-before-poke pair (full rationale +
-		// the P042 race map + both VERIFIED instruction words live in the
-		// member-block comment).  Two INDEPENDENT one-shot pokes - a REFUSE on
-		// one must not (and structurally cannot) block the other; each waits
-		// for the boot loader (word reads 0 until the program image lands),
-		// pokes on the verified original word, refuses on any other nonzero
-		// word.  Poking in early boot precedes the completion check's first
-		// execution (attract-demo gameplay, tens of seconds later), so the
-		// DRC compiles its blocks from the already-poked RAM - and a residual
-		// re-copy window fails to STOCK behavior only (the guard in the 1/s
-		// status block below re-pokes on re-materialization).
-		if (m_patch_waveinit_hold)
-		{
-			address_space &prog = m_maincpu->space(AS_PROGRAM);
-
-			// Poke 1: window-narrow - slti $v0,$v0,0xB -> slti $v0,$v0,1
-			// (the walk-phase condition-B window closes until end-cursor<1;
-			// fight areas activate at end-cursor==1 and can no longer
-			// complete before their wave exists).
-			if (!m_wih_win_poked && !m_wih_win_refused)
-			{
-				u32 const word = prog.read_dword(0x0001417c);
-				if (word == 0x2842000b)
-				{
-					prog.write_dword(0x0001417c, 0x28420001);
-					m_wih_win_poked = true;
-					logerror("WAVEINIT_HOLD: poked window @0x8001417C old=2842000B new=28420001 frame=%u t=%.6f (slti $v0,$v0,0xB -> slti $v0,$v0,1: condition B of completion check 0x80014074 held until end-cursor<1 in the walk - the 10-frame ask-before-the-wave-exists window is closed; activation @0x800A0E5C fires at end-cursor==1, walk-only advance rides id==-1 at end-cursor<=0; 1/s guard re-checks the word)\n",
-							frame_count, machine().time().as_double());
-				}
-				else if (word != 0)
-				{
-					m_wih_win_refused = true;
-					logerror("WAVEINIT_HOLD: REFUSED window @0x8001417C found=%08x expected=2842000B frame=%u t=%.6f - ROM-revision guard: window poke stays inert (the clamp poke is INDEPENDENT and continues; status stays armed)\n",
-							word, frame_count, machine().time().as_double());
-				}
-			}
-
-			// Poke 2: not-found clamp - li $v0,-2 -> li $v0,0 (the ring
-			// lookup's not-found verdict reads "alive"; kills the
-			// never-registered flavor everywhere incl. the fight phase;
-			// sole caller of 0x800B5690 is condition B's jal @0x8001418C).
-			if (!m_wih_clamp_poked && !m_wih_clamp_refused)
-			{
-				u32 const word = prog.read_dword(0x000b56e0);
-				if (word == 0x2402fffe)
-				{
-					prog.write_dword(0x000b56e0, 0x24020000);
-					m_wih_clamp_poked = true;
-					logerror("WAVEINIT_HOLD: poked clamp @0x800B56E0 old=2402FFFE new=24020000 frame=%u t=%.6f (li $v0,-2 -> li $v0,0: ring lookup 0x800B5690 not-found verdict clamped neutral - a never-registered anchor no longer completes its area; id==-1 -> -1 walk-advance path and found-slot handle return untouched; 1/s guard re-checks the word)\n",
-							frame_count, machine().time().as_double());
-				}
-				else if (word != 0)
-				{
-					m_wih_clamp_refused = true;
-					logerror("WAVEINIT_HOLD: REFUSED clamp @0x800B56E0 found=%08x expected=2402FFFE frame=%u t=%.6f - ROM-revision guard: clamp poke stays inert (the window poke is INDEPENDENT and continues; status stays armed)\n",
-							word, frame_count, machine().time().as_double());
-				}
 			}
 		}
 
@@ -8629,24 +6316,23 @@ void namcos23_state::vblank(int state)
 			}
 		}
 
-		// P040: the ADOPT-EDGE FALSIFIER (read-only; armed by EITHER
-		// suppression env - the v1 filter NAMCOS23_PATCH_OP6F_NO394 or the
-		// P040b NOP NAMCOS23_PATCH_OP6F_NO394B: the falsifier is pc-free and
-		// DRC-safe, so the mechanism swap keeps it VERBATIM - see the
-		// member-block comments).  The adoption fingerprint from the P038/P039
+		// P040: the ADOPT-EDGE FALSIFIER (read-only; pc-free and DRC-safe, so
+		// the P040->P040b mechanism swap kept it VERBATIM and the P072 v1
+		// removal keeps it as the NO394B backstop - see the member-block
+		// comments).  The adoption fingerprint from the P038/P039
 		// analyses: rec0+0x394 jumping by more than +/-2 between vblank samples
 		// AND landing within +/-3 of rec0+0x390 (the master's never-re-based
 		// EQUAL pair is wall-synced to the slave's own play clock, so an
 		// adoption lands 394 == ~390; P038 run: +8 @95.269 and the +9286
-		// poison @253.388, both landing ==390, red zero).  With the filter
+		// poison @253.388, both landing ==390, red zero).  With the poke
 		// armed this line MUST stay silent - a hit means a second adoption
 		// path the static RE missed (or a Handler-A saved-pair restore whose
 		// saved pair sits within +/-3 of the running play clock: result-screen
-		// windows only, cross-check ROUNDEND lines by t=).  Legit writers
+		// windows only).  Legit writers
 		// cannot fire it: tick jumps are +1/+2 by definition; the re-base
 		// zero and init -1 land nowhere near the running 390; prints rec0_390
 		// INLINE per the P038 test-plan addition.
-		if (m_patch_op6f_no394 || m_patch_op6f_no394b)
+		if (m_patch_op6f_no394b)
 		{
 			u32 const rec0_390 = m_mainram[0x002F43F0 / 4]; // rec0 +0x390 play clock
 			u32 const rec0_394 = m_mainram[0x002F43F4 / 4]; // rec0 +0x394 segment clock
@@ -8657,7 +6343,7 @@ void namcos23_state::vblank(int state)
 				if ((jump < -2 || jump > 2) && gap >= -3 && gap <= 3)
 				{
 					++m_no394_adopt_edges;
-					logerror("OP6F_NO394: adopt-edge frame=%u t=%.6f jump=%d new394=%08x cur390=%08x edges_total=%u (MUST stay 0 while the filter is armed - a hit = an adoption landed via a path the filter does not cover)\n",
+					logerror("OP6F_NO394B: adopt-edge frame=%u t=%.6f jump=%d new394=%08x cur390=%08x edges_total=%u (MUST stay 0 while the poke is armed - a hit = an adoption landed via a path the NOP does not cover)\n",
 							frame_count, machine().time().as_double(), jump,
 							rec0_394, rec0_390, m_no394_adopt_edges);
 				}
@@ -8665,47 +6351,27 @@ void namcos23_state::vblank(int state)
 			m_no394_prev_394 = rec0_394;
 			m_no394_have_prev = true;
 
-			// 1/s status: filter + falsifier counters and the live clock pair
-			// (cheap: two RAM reads already done + one line).
+			// P040b 1/s GUARD: re-read the poked word.  If the ORIGINAL
+			// instruction re-materialized (loader re-copy / soft-reset
+			// re-boot - the only ways RAM regains it), re-poke immediately
+			// and count each observation (re-poke line = the event record;
+			// the 1/s status line was removed in P072 phase C - the
+			// adopt-edge falsifier is the standing aliveness rail).
 			if (frame_count % 60 == 0)
 			{
-				logerror("OP6F_NO394: status frame=%u t=%.6f blocked=%u(+%u) pass394=%u(+%u) adoptedge=%u rec0_390=%08x rec0_394=%08x\n",
-						frame_count, machine().time().as_double(),
-						m_no394_blocked, m_no394_blocked_win,
-						m_no394_pass394, m_no394_pass394_win,
-						m_no394_adopt_edges, rec0_390, rec0_394);
-				m_no394_blocked_win = 0;
-				m_no394_pass394_win = 0;
-
-				// P040b 1/s GUARD + status: re-read the poked word.  If the
-				// ORIGINAL instruction re-materialized (loader re-copy /
-				// soft-reset re-boot - the only ways RAM regains it), re-poke
-				// immediately and count each observation.  The status line's
-				// word2508 field (the OBSERVED, pre-re-poke value) is the
-				// NO394B aliveness rail: expect 00000000 from the poke onward
-				// - any nonzero value = the refused word or a
-				// re-materialization instant.  Under NO394B-only the v1 tap
-				// counters above legitimately read 0 (no tap installed).
-				if (m_patch_op6f_no394b)
+				address_space &prog = m_maincpu->space(AS_PROGRAM);
+				u32 const word2508 = prog.read_dword(0x000b2508);
+				if (m_no394b_poked && word2508 == 0xac460394)
 				{
-					address_space &prog = m_maincpu->space(AS_PROGRAM);
-					u32 const word2508 = prog.read_dword(0x000b2508);
-					if (m_no394b_poked && word2508 == 0xac460394)
-					{
-						prog.write_dword(0x000b2508, 0x00000000);
-						++m_no394b_repokes;
-						logerror("OP6F_NO394B: re-poke @0x800B2508 old=AC460394 new=00000000 frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window would evade loose verify - adopt-edge is the backstop)\n",
-								frame_count, machine().time().as_double(), m_no394b_repokes);
-					}
-					logerror("OP6F_NO394B: status frame=%u t=%.6f word2508=%08x poked=%u refused=%u repokes=%u\n",
-							frame_count, machine().time().as_double(), word2508,
-							m_no394b_poked ? 1u : 0u, m_no394b_refused ? 1u : 0u,
-							m_no394b_repokes);
+					prog.write_dword(0x000b2508, 0x00000000);
+					++m_no394b_repokes;
+					logerror("OP6F_NO394B: re-poke @0x800B2508 old=AC460394 new=00000000 frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window would evade loose verify - adopt-edge is the backstop)\n",
+							frame_count, machine().time().as_double(), m_no394b_repokes);
 				}
 			}
 		}
 
-		// P041: the 390-JUMP CENSUS FALSIFIER + the NO390B 1/s guard/status
+		// P041: the 390-JUMP CENSUS FALSIFIER + the NO390B 1/s guard
 		// (own block, own gate - the shared 394 rails above stay UNTOUCHED).
 		// Any POSITIVE rec0+0x390 jump > +2 between vblank samples is the
 		// adoption fingerprint (P040b run 2 measured landings +3..+12 on the
@@ -8713,9 +6379,7 @@ void namcos23_state::vblank(int state)
 		// negative, the segment re-base zeroes 394 only - none of those can
 		// fire this).  With the poke armed it MUST stay 0 on both cabs; a
 		// hit = a 390 adoption landed via a path the NOP does not cover (or
-		// a Handler-A saved-pair restore - result-screen windows only,
-		// cross-check ROUNDEND lines by t=).  The recipe's PLAYCLOCK
-		// clock-jump rec0_390 census stays the independent cross-check.
+		// a Handler-A saved-pair restore - result-screen windows only).
 		if (m_patch_op6f_no390b)
 		{
 			u32 const rec0_390 = m_mainram[0x002F43F0 / 4]; // rec0 +0x390 play clock
@@ -8725,7 +6389,7 @@ void namcos23_state::vblank(int state)
 				if (jump > 2)
 				{
 					++m_no390b_jump390s;
-					logerror("OP6F_NO390B: 390-jump frame=%u t=%.6f jump=%d new390=%08x jumps_total=%u (MUST stay 0 while the poke is armed - a positive jump >2 = a 390 adoption landed via a path the NOP does not cover; cross-check PLAYCLOCK clock-jump rec0_390 and ROUNDEND by t=)\n",
+					logerror("OP6F_NO390B: 390-jump frame=%u t=%.6f jump=%d new390=%08x jumps_total=%u (MUST stay 0 while the poke is armed - a positive jump >2 = a 390 adoption landed via a path the NOP does not cover)\n",
 							frame_count, machine().time().as_double(), jump,
 							rec0_390, m_no390b_jump390s);
 				}
@@ -8733,12 +6397,11 @@ void namcos23_state::vblank(int state)
 			m_no390b_prev_390 = rec0_390;
 			m_no390b_have_prev = true;
 
-			// 1/s GUARD + status: re-read the poked word; if the ORIGINAL
-			// instruction re-materialized (loader re-copy / soft-reset
-			// re-boot - the only ways RAM regains it), re-poke immediately
-			// and count each observation.  word2504 prints the OBSERVED,
-			// pre-re-poke value = the NO390B aliveness rail: expect 00000000
-			// from the poke onward.
+			// 1/s GUARD: re-read the poked word; if the ORIGINAL instruction
+			// re-materialized (loader re-copy / soft-reset re-boot - the only
+			// ways RAM regains it), re-poke immediately and count each
+			// observation (the 1/s status line was removed in P072 phase C -
+			// the 390-jump census is the standing aliveness rail).
 			if (frame_count % 60 == 0)
 			{
 				address_space &prog = m_maincpu->space(AS_PROGRAM);
@@ -8750,57 +6413,15 @@ void namcos23_state::vblank(int state)
 					logerror("OP6F_NO390B: re-poke @0x800B2504 old=AC470390 new=00000000 frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window would evade loose verify - the 390-jump census is the backstop)\n",
 							frame_count, machine().time().as_double(), m_no390b_repokes);
 				}
-				logerror("OP6F_NO390B: status frame=%u t=%.6f word2504=%08x poked=%u refused=%u repokes=%u jump390s=%u rec0_390=%08x\n",
-						frame_count, machine().time().as_double(), word2504,
-						m_no390b_poked ? 1u : 0u, m_no390b_refused ? 1u : 0u,
-						m_no390b_repokes, m_no390b_jump390s, rec0_390);
 			}
 		}
 
-		// P043: the COMBINED 1/s guard + status for the wave-init-hold pair.
-		// Re-read both words; if an ORIGINAL instruction re-materialized
-		// (loader re-copy / soft-reset re-boot - the only ways RAM regains
-		// it), re-poke immediately and count each observation.  The status
-		// line carries BOTH word rails (the OBSERVED, pre-re-poke values):
-		// expect word1417c=28420001 and wordb56e0=24020000 from the pokes
-		// onward - the ORIGINAL words (2842000B / 2402FFFE) on a status line
-		// = a re-materialization instant; anything else = the refused word.
-		if (m_patch_waveinit_hold && frame_count % 60 == 0)
-		{
-			address_space &prog = m_maincpu->space(AS_PROGRAM);
-			u32 const word1417c = prog.read_dword(0x0001417c);
-			u32 const wordb56e0 = prog.read_dword(0x000b56e0);
-			if (m_wih_win_poked && word1417c == 0x2842000b)
-			{
-				prog.write_dword(0x0001417c, 0x28420001);
-				++m_wih_win_repokes;
-				logerror("WAVEINIT_HOLD: re-poke window @0x8001417C old=2842000B new=28420001 frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely runs the STOCK 10-frame check - fail-to-stock, the WAVEINIT trace exposes any resulting walk-window bit16)\n",
-						frame_count, machine().time().as_double(), m_wih_win_repokes);
-			}
-			if (m_wih_clamp_poked && wordb56e0 == 0x2402fffe)
-			{
-				prog.write_dword(0x000b56e0, 0x24020000);
-				++m_wih_clamp_repokes;
-				logerror("WAVEINIT_HOLD: re-poke clamp @0x800B56E0 old=2402FFFE new=24020000 frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely returns the STOCK -2 verdict - fail-to-stock, the WAVEINIT trace exposes any resulting beta completion)\n",
-						frame_count, machine().time().as_double(), m_wih_clamp_repokes);
-			}
-			logerror("WAVEINIT_HOLD: status frame=%u t=%.6f word1417c=%08x wordb56e0=%08x win[poked=%u refused=%u repokes=%u] clamp[poked=%u refused=%u repokes=%u]\n",
-					frame_count, machine().time().as_double(), word1417c, wordb56e0,
-					m_wih_win_poked ? 1u : 0u, m_wih_win_refused ? 1u : 0u, m_wih_win_repokes,
-					m_wih_clamp_poked ? 1u : 0u, m_wih_clamp_refused ? 1u : 0u, m_wih_clamp_repokes);
-		}
-
-		// P048: 1/s guard + status for the reaper-patience poke.  Re-read the
-		// word; if the ORIGINAL instruction re-materialized (loader re-copy /
+		// P048: 1/s guard for the reaper-patience poke.  Re-read the word; if
+		// the ORIGINAL instruction re-materialized (loader re-copy /
 		// soft-reset re-boot - the only ways RAM regains it), re-poke
-		// immediately and count each observation.  wordb71a0 prints the
-		// OBSERVED, pre-re-poke value = the aliveness rail: expect 2C42001F
-		// (mode 1) / 2C420020 (mode 2) from the poke onward - 2C420011 on a
-		// status line = a re-materialization instant; anything else = the
-		// refused word.  A block compiled inside the sub-second re-copy window
-		// keeps STOCK 17-tick patience only (fail-to-stock) - the run's OP20
-		// reg-to-kill offset census (the +[15,18] f ring-kill class MUST be 0)
-		// is the behavioral backstop.
+		// immediately and count each observation.  A block compiled inside
+		// the sub-second re-copy window keeps STOCK 17-tick patience only
+		// (fail-to-stock).  (The 1/s status line was removed in P072 phase C.)
 		if (m_patch_reaper_patience != 0 && frame_count % 60 == 0)
 		{
 			address_space &prog = m_maincpu->space(AS_PROGRAM);
@@ -8811,23 +6432,15 @@ void namcos23_state::vblank(int state)
 				u32 const patched = (wordb71a0 & 0xffff0000) | imm;
 				prog.write_dword(0x000b71a0, patched);
 				++m_rpp_repokes;
-				logerror("REAPER_PATIENCE: re-poke @0x800B71A0 old=2C420011 new=%08X frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely keeps STOCK 17-tick patience - fail-to-stock, the OP20 reg-to-kill census is the backstop)\n",
+				logerror("REAPER_PATIENCE: re-poke @0x800B71A0 old=2C420011 new=%08X frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely keeps STOCK 17-tick patience - fail-to-stock)\n",
 						patched, frame_count, machine().time().as_double(), m_rpp_repokes);
 			}
-			logerror("REAPER_PATIENCE: status frame=%u t=%.6f wordb71a0=%08x mode=%d poked=%u refused=%u repokes=%u\n",
-					frame_count, machine().time().as_double(), wordb71a0,
-					m_patch_reaper_patience,
-					m_rpp_poked ? 1u : 0u, m_rpp_refused ? 1u : 0u, m_rpp_repokes);
 		}
 
-		// P050: the SINGLE-BURST PUMP 1/s re-check/re-poke guard + status.
-		// wordbc78 prints the OBSERVED pre-re-poke value = the aliveness rail:
-		// expect 28420401 from the poke onward; 28420100 on a status line = a
-		// re-materialization instant (loader re-copy / soft-reset re-boot).  A
-		// block compiled inside the sub-second re-copy window keeps the STOCK
-		// 0x100 quantum only (fail-to-stock) - the device-side single_burst_tx
-		// counter + the absence of 255-hw chunk-train logs in fights is the
-		// behavioral backstop.
+		// P050: the SINGLE-BURST PUMP 1/s re-check/re-poke guard.  A block
+		// compiled inside the sub-second re-copy window keeps the STOCK 0x100
+		// quantum only (fail-to-stock).  (The 1/s status line was removed in
+		// P072 phase C.)
 		if (m_patch_burst_quantum && frame_count % 60 == 0)
 		{
 			address_space &prog = m_maincpu->space(AS_PROGRAM);
@@ -8837,21 +6450,16 @@ void namcos23_state::vblank(int state)
 				u32 const patched = (wordbc78 & 0xffff0000) | 0x0401;
 				prog.write_dword(0x0000bc78, patched);
 				++m_bq_repokes;
-				logerror("BURST_QUANTUM: re-poke @0x8000BC78 old=28420100 new=%08X frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely keeps the STOCK 0x100 burst quantum - fail-to-stock, the device single_burst_tx / chunk-train census is the backstop)\n",
+				logerror("BURST_QUANTUM: re-poke @0x8000BC78 old=28420100 new=%08X frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a block compiled from the original word inside this sub-second window merely keeps the STOCK 0x100 burst quantum - fail-to-stock)\n",
 						patched, frame_count, machine().time().as_double(), m_bq_repokes);
 			}
-			logerror("BURST_QUANTUM: status frame=%u t=%.6f wordbc78=%08x poked=%u refused=%u repokes=%u\n",
-					frame_count, machine().time().as_double(), wordbc78,
-					m_bq_poked ? 1u : 0u, m_bq_refused ? 1u : 0u, m_bq_repokes);
 		}
 
-		// P066: the LINK-WAIT seed 1/s re-check/re-poke guard + status.
-		// word9ab8 prints the OBSERVED pre-re-poke value = the aliveness rail:
-		// expect 2402xxxx with xxxx = units from the poke onward; 2402012C on
-		// a status line = a re-materialization instant (loader re-copy /
-		// soft-reset re-boot).  A seed executed inside such a window counted
-		// STOCK 300 only (fail-to-stock) - the on-screen countdown start
-		// value is the behavioral backstop.
+		// P066: the LINK-WAIT seed 1/s re-check/re-poke guard.  A seed
+		// executed inside the re-copy window counted STOCK 300 only
+		// (fail-to-stock) - the on-screen countdown start value is the
+		// behavioral backstop.  (The 1/s status line was removed in P072
+		// phase C.)
 		if (m_patch_link_wait_units != 0 && frame_count % 60 == 0)
 		{
 			address_space &prog = m_maincpu->space(AS_PROGRAM);
@@ -8864,126 +6472,18 @@ void namcos23_state::vblank(int state)
 				logerror("LINK_WAIT: re-poke @0x80009AB8 old=2402012C new=%08X frame=%u t=%.6f repokes_total=%u (word re-materialized - loader re-copy or soft-reset re-boot; a state-0 seed executed inside this window counted STOCK 300 - fail-to-stock, the on-screen start value is the tell)\n",
 						patched, frame_count, machine().time().as_double(), m_lw_repokes);
 			}
-			logerror("LINK_WAIT: status frame=%u t=%.6f word9ab8=%08x units=%d poked=%u refused=%u repokes=%u\n",
-					frame_count, machine().time().as_double(), word9ab8,
-					m_patch_link_wait_units,
-					m_lw_poked ? 1u : 0u, m_lw_refused ? 1u : 0u, m_lw_repokes);
 		}
 
-		// P043: READ-ONLY WAVEINIT ring/anchor trace (independent env; full
-		// line spec in the member-block comment).  Per-event only: a line at
-		// every p370 bit16 SET edge (with the emulated ring lookup naming the
-		// poison flavor) and one line per engage cycle at its activation.
-		// All reads m_mainram; the ring lookup emulation replicates
-		// 0x800B5690 exactly (rotation (cursor+a1)&3 for a1=3..0, first id
-		// match returns the slot's lh handle; id==-1 -> -1; none -> -2).
-		if (m_trace_waveinit)
+
+		// P044: the ANCHOR_RESURRECT dead-slot id scrub.  Full design, the
+		// verified ring facts and the retirement history live in the member-block
+		// comment.  (The read-only OP20 ring-transaction trace that shared this
+		// sample was removed in P072.)
+		if (m_patch_anchor_resurrect)
 		{
-			static u32 const rec_base[2] = { 0x002F4060, 0x002F44D4 }; // rec0 / rec1 (stride 0x474)
-			for (int r = 0; r < 2; r++)
-			{
-				u32 const base   = rec_base[r];
-				u32 const p370   = m_mainram[(base + 0x370) / 4];
-				u32 const f5c    = m_mainram[(base + 0x5C) / 4];
-				u32 const w68    = m_mainram[(base + 0x68) / 4];
-				s32 const cursor = s16(w68 >> 16);                 // rec+0x68 intro/fight timeline cursor (lh)
-				s32 const tend   = s16(w68);                       // rec+0x6A timeline end (lh)
-				s32 const endcur = tend - cursor;
-				u32 const anchor = m_mainram[(base + 0x364) / 4];  // wave-anchor entity id (desc[0x14])
-
-				if (m_wt_have_prev)
-				{
-					// Engage rise (p370 bit5 0x20): re-arm the cycle trackers.
-					if ((p370 & 0x20) && !(m_wt_prev_p370[r] & 0x20))
-					{
-						m_wt_engage_t[r] = machine().time().as_double();
-						m_wt_engage_anchor[r] = anchor;
-						m_wt_win11_t[r] = -1.0;
-						m_wt_win1_t[r] = -1.0;
-					}
-
-					// Stock/narrowed check-window entries, walk phase only
-					// (f5c bit0 clear; the fight phase re-sweeps the cursor).
-					if (!(f5c & 1))
-					{
-						if (m_wt_win11_t[r] < 0.0 && endcur < 11 && m_wt_prev_endcur[r] >= 11)
-							m_wt_win11_t[r] = machine().time().as_double();
-						if (m_wt_win1_t[r] < 0.0 && endcur < 1 && m_wt_prev_endcur[r] >= 1)
-							m_wt_win1_t[r] = machine().time().as_double();
-					}
-
-					// THE EDGE: p370 bit16 0->1 = an area completion latched.
-					// Dump everything condition B read plus the flavor verdict.
-					if ((p370 & 0x00010000) && !(m_wt_prev_p370[r] & 0x00010000))
-					{
-						u32 const map368  = m_mainram[(base + 0x368) / 4];   // big-map view of the anchor (0x800B7398 result, non-ring)
-						u32 const ringcur = m_mainram[0x002CEC00 / 4];       // gp+0x73E0 ring rotation cursor
-						u32 ringid[4];
-						s32 ringh[4];
-						for (int s = 0; s < 4; s++)
-						{
-							ringid[s] = m_mainram[(0x002D2030 + 8 * s) / 4];
-							ringh[s]  = s16(m_mainram[(0x002D2034 + 8 * s) / 4] >> 16);
-						}
-						s32 lookup = -2;
-						if (anchor == 0xffffffff)
-							lookup = -1;
-						else for (int a1 = 3; a1 >= 0; a1--)
-						{
-							int const s = (ringcur + a1) & 3;
-							if (ringid[s] == anchor)
-							{
-								lookup = ringh[s];
-								break;
-							}
-						}
-						bool const rearm = (m_wt_engage_t[r] >= 0.0) && (anchor != m_wt_engage_anchor[r]);
-						char const *flavor;
-						if (p370 & 0x00020000)          flavor = "hookA-conditionA";
-						else if (rearm)                 flavor = "gamma-rearm";
-						else if (anchor == 0xffffffff)  flavor = "no-id-walkclass";
-						else if (lookup == -2)          flavor = "beta-never-registered";
-						else if (lookup < 0)            flavor = "alpha-released-handle";
-						else                            flavor = "healthy-unexplained";
-						logerror("WAVEINIT: bit16 frame=%u t=%.6f rec=%d p370 %08x->%08x bit17=%u f5c=%08x bit0=%u cursor=%d end=%d endcur=%d anchor=%08x anchor@engage=%08x map368=%08x ring[%08x:%d %08x:%d %08x:%d %08x:%d] ringcur=%u lookup=%d flavor=%s engage_t=%.6f win11_t=%.6f\n",
-								frame_count, machine().time().as_double(), r,
-								m_wt_prev_p370[r], p370, (p370 >> 17) & 1, f5c, f5c & 1,
-								cursor, tend, endcur, anchor, m_wt_engage_anchor[r], map368,
-								ringid[0], ringh[0], ringid[1], ringh[1],
-								ringid[2], ringh[2], ringid[3], ringh[3],
-								ringcur, lookup, flavor, m_wt_engage_t[r], m_wt_win11_t[r]);
-					}
-
-					// Activation (f5c bit0 0->1): the per-engage one-liner.
-					// bit16_now=1 here = the completion PRE-LATCHED inside the
-					// walk = the skip signature (expect 0 with the pokes armed).
-					if ((f5c & 1) && !(m_wt_prev_5c[r] & 1))
-						logerror("WAVEINIT: engage-cycle frame=%u t=%.6f rec=%d engage_t=%.6f win11_t=%.6f win1_t=%.6f act_t=%.6f anchor=%08x bit16_now=%u p370=%08x\n",
-								frame_count, machine().time().as_double(), r,
-								m_wt_engage_t[r], m_wt_win11_t[r], m_wt_win1_t[r],
-								machine().time().as_double(), anchor,
-								(p370 >> 16) & 1, p370);
-				}
-
-				m_wt_prev_p370[r] = p370;
-				m_wt_prev_5c[r] = f5c;
-				m_wt_prev_endcur[r] = endcur;
-			}
-			m_wt_have_prev = true;
-		}
-
-		// P044: the ANCHOR LIFECYCLE block - trace (OP20:), shield
-		// (ANCHOR_SHIELD:) and resurrect scrub (ANCHOR_RESURRECT:).  Full
-		// design, the verified ring facts and the ordering contract live in
-		// the member-block comment.  One shared sample per vblank; the trace
-		// diffs ROM-caused transactions BEFORE any of our writes; prevs are
-		// updated to the POST-write state at the end.
-		if (m_trace_op20 || m_patch_anchor_shield || m_patch_anchor_resurrect)
-		{
-			static u32 const anl_rec_base[2] = { 0x002F4060, 0x002F44D4 }; // rec0 / rec1 (stride 0x474)
 			double const now = machine().time().as_double();
-
-			// ---- shared sample (ring + both records) ----
+			u32 const anchor0 = m_mainram[(0x002F4060 + 0x364) / 4]; // rec0 +0x364 (scrub-line context)
+			u32 const anchor1 = m_mainram[(0x002F44D4 + 0x364) / 4]; // rec1 +0x364
 			u32 ringid[4];
 			s32 ringh[4];
 			for (int s = 0; s < 4; s++)
@@ -8991,873 +6491,19 @@ void namcos23_state::vblank(int state)
 				ringid[s] = m_mainram[(0x002D2030 + 8 * s) / 4];
 				ringh[s]  = s16(m_mainram[(0x002D2034 + 8 * s) / 4] >> 16); // lh lane = top half (BE)
 			}
-			u32 const ringcur = m_mainram[0x002CEC00 / 4]; // gp+0x73E0 rotation cursor
-			u32 p370[2], f5c[2], anchor[2], desc[2];
-			s32 endcur[2];
-			for (int r = 0; r < 2; r++)
-			{
-				u32 const base = anl_rec_base[r];
-				p370[r]   = m_mainram[(base + 0x370) / 4];
-				f5c[r]    = m_mainram[(base + 0x5C) / 4];
-				anchor[r] = m_mainram[(base + 0x364) / 4];
-				desc[r]   = m_mainram[(base + 0x35C) / 4];
-				u32 const w68 = m_mainram[(base + 0x68) / 4];
-				endcur[r] = s32(s16(w68)) - s32(s16(w68 >> 16)); // end (lh +0x6A) - cursor (lh +0x68)
-			}
-			// Rotation-faithful ring find (replicates BOTH ROM find loops:
-			// first id match from (cursor+3)&3 down; id -1 never searches).
-			auto ring_find = [&ringid, ringcur](u32 id) -> int {
-					if (id == 0xffffffff)
-						return -1;
-					for (int a1 = 3; a1 >= 0; a1--)
-					{
-						int const s = int((ringcur + u32(a1)) & 3);
-						if (ringid[s] == id)
-							return s;
-					}
-					return -1;
-				};
-
-			// ---- gate 1: READ-ONLY ring-transaction trace ----
-			if (m_trace_op20 && m_anl_have_prev)
-			{
-				// Per-slot deltas since the last post-write sample = ROM-caused
-				// transactions during the last frame.
-				for (int s = 0; s < 4; s++)
-				{
-					bool const idch = ringid[s] != m_anl_prev_ringid[s];
-					bool const hch  = ringh[s] != m_anl_prev_ringh[s];
-					if (!idch && !hch)
-						continue;
-					u32 const id = ringid[s]; // post-transaction id (== pre for kills/revives)
-					unsigned const m0 = (anchor[0] == id) ? 1 : 0;
-					unsigned const m1 = (anchor[1] == id) ? 1 : 0;
-					if (!idch && m_anl_prev_ringh[s] >= 0 && ringh[s] < 0)
-					{
-						++m_o20_kills;
-						logerror("OP20: ring-kill frame=%u t=%.6f slot=%d id=%08x h %d->%d matchrec0=%u matchrec1=%u walk0=%u walk1=%u endcur0=%d endcur1=%d anchor0=%08x anchor1=%08x p370_0=%08x p370_1=%08x kills_total=%u (release marked this slot dead - an adjacent device 'OP20: rx-release' by t= NAMES it an INGESTED kill, none = local release/cull)\n",
-								frame_count, now, s, id, m_anl_prev_ringh[s], ringh[s],
-								m0, m1, (~f5c[0]) & 1, (~f5c[1]) & 1, endcur[0], endcur[1],
-								anchor[0], anchor[1], p370[0], p370[1], m_o20_kills);
-					}
-					else if (idch && ringh[s] >= 0)
-					{
-						++m_o20_regs;
-						logerror("OP20: ring-reg frame=%u t=%.6f slot=%d id %08x->%08x h %d->%d matchrec0=%u matchrec1=%u regs_total=%u (registration reused this slot for a fresh anchor)\n",
-								frame_count, now, s, m_anl_prev_ringid[s], ringid[s],
-								m_anl_prev_ringh[s], ringh[s], m0, m1, m_o20_regs);
-					}
-					else if (!idch && m_anl_prev_ringh[s] < 0 && ringh[s] >= 0)
-					{
-						++m_o20_revives;
-						logerror("OP20: ring-revive frame=%u t=%.6f slot=%d id=%08x h %d->%d revives_total=%u (FALSIFIER: same-id dead->live without re-registration has NO stock path and shield repairs update the sampler basis - investigate if seen)\n",
-								frame_count, now, s, id, m_anl_prev_ringh[s], ringh[s], m_o20_revives);
-					}
-					else
-					{
-						++m_o20_rewrites;
-						logerror("OP20: ring-rewrite frame=%u t=%.6f slot=%d id %08x->%08x h %d->%d rewrites_total=%u (dead-slot rewrite / collapsed multi-transaction)\n",
-								frame_count, now, s, m_anl_prev_ringid[s], ringid[s],
-								m_anl_prev_ringh[s], ringh[s], m_o20_rewrites);
-					}
-				}
-
-				// Commit-edge detector: rec+0x35C (desc) or rec+0x364 (anchor)
-				// changed = a descriptor commit landed during the last frame.
-				// Classify its anchor's FIRST post-commit ring state.  (A kill
-				// landing in the same frame as the commit is counted born-dead
-				// too - the device rx-release lines disambiguate by t=.)
-				for (int r = 0; r < 2; r++)
-				{
-					if (desc[r] == m_anl_prev_desc[r] && anchor[r] == m_anl_prev_anchor[r])
-						continue;
-					if (anchor[r] == 0xffffffff)
-						continue; // walk-only segment - no anchor, no ring interaction
-					int const s = ring_find(anchor[r]);
-					if (s >= 0 && ringh[s] < 0)
-					{
-						++m_o20_borndead;
-						logerror("OP20: born-dead-commit frame=%u t=%.6f rec=%d anchor=%08x slot=%d h=%d desc35c %08x->%08x p370=%08x f5c=%08x borndead_total=%u (commit find-or-create hit a stale DEAD slot and did not resurrect - the 0x800B5710 edge, the cascade class; with ANCHOR_RESURRECT armed this MUST collapse toward 0)\n",
-								frame_count, now, r, anchor[r], s, ringh[s],
-								m_anl_prev_desc[r], desc[r], p370[r], f5c[r], m_o20_borndead);
-					}
-					else if (s < 0)
-					{
-						++m_o20_unreg;
-						logerror("OP20: commit-unregistered frame=%u t=%.6f rec=%d anchor=%08x desc35c %08x->%08x ring[%08x:%d %08x:%d %08x:%d %08x:%d] unreg_total=%u (anchor absent from all 4 slots at first post-commit sample - ring-full silent drop / create-fail = beta fuel, or a same-frame scrub+commit collapse)\n",
-								frame_count, now, r, anchor[r], m_anl_prev_desc[r], desc[r],
-								ringid[0], ringh[0], ringid[1], ringh[1],
-								ringid[2], ringh[2], ringid[3], ringh[3], m_o20_unreg);
-					}
-					else
-					{
-						++m_o20_healthy; // ring-live at first sample - counted, no line (the common case)
-					}
-				}
-			}
-
-			// ---- gate 2: the walk-phase ANCHOR SHIELD ----
-			if (m_patch_anchor_shield)
-			{
-				for (int r = 0; r < 2; r++)
-				{
-					bool const own  = !(p370[r] & 0x40000000); // bit30 set = mirror, never self-completes
-					bool const walk = !(f5c[r] & 1);           // bit0 set = wave active (fight phase)
-					if (!own || !walk || anchor[r] == 0xffffffff)
-					{
-						// Disengaged (mirror record, activation reached, or a
-						// no-anchor segment).  Summarize an eventful cycle once.
-						if (m_ash_repairs_cycle[r] != 0 || m_ash_yielded[r] || m_ash_missed_logged[r])
-							logerror("ANCHOR_SHIELD: cycle-end frame=%u t=%.6f rec=%d anchor=%08x repairs=%u yielded=%u missed=%u f5c=%08x p370=%08x bit16=%u (shield disengaged - bit16=0 here means the walk survived to activation)\n",
-									frame_count, now, r, m_ash_live_id[r],
-									m_ash_repairs_cycle[r], m_ash_yielded[r] ? 1u : 0u,
-									m_ash_missed_logged[r] ? 1u : 0u, f5c[r], p370[r],
-									(p370[r] >> 16) & 1);
-						m_ash_live_handle[r] = -1;
-						m_ash_live_id[r] = 0xffffffff;
-						m_ash_repairs_cycle[r] = 0;
-						m_ash_yielded[r] = false;
-						m_ash_missed_logged[r] = false;
-						continue;
-					}
-					// New walk cycle (fresh commit rewrote the anchor id).
-					if (m_ash_live_id[r] != anchor[r])
-					{
-						m_ash_live_id[r] = anchor[r];
-						m_ash_live_handle[r] = -1;
-						m_ash_repairs_cycle[r] = 0;
-						m_ash_yielded[r] = false;
-						m_ash_missed_logged[r] = false;
-					}
-					int const s = ring_find(anchor[r]);
-					if (s >= 0 && ringh[s] >= 0)
-					{
-						m_ash_live_handle[r] = ringh[s]; // capture/refresh the live handle
-					}
-					else if (m_ash_live_handle[r] >= 0 && !m_ash_yielded[r])
-					{
-						// The anchor WAS live this walk and is now dead (or its
-						// slot got rewritten).  Restore the ring view - but only
-						// into a slot that still carries OUR id (never clobber a
-						// slot re-registered to another anchor).
-						if (s >= 0 && ringh[s] < 0)
-						{
-							if (m_ash_repairs_cycle[r] < 8)
-							{
-								u32 const widx = (0x002D2034 + 8 * u32(s)) / 4;
-								s32 const oldh = ringh[s];
-								m_mainram[widx] = (u32(u16(m_ash_live_handle[r])) << 16) | (m_mainram[widx] & 0x0000ffff);
-								ringh[s] = m_ash_live_handle[r]; // keep the local view post-write consistent
-								++m_ash_repairs_cycle[r];
-								++m_ash_repairs;
-								logerror("ANCHOR_SHIELD: repair frame=%u t=%.6f rec=%d anchor=%08x slot=%d h %d->%d repairs_cycle=%u repairs_total=%u endcur=%d f5c=%08x p370=%08x (walk-phase ring view restored - the completion check can no longer empty-complete this segment; the entity's release mark is NOT undone: wave-activation outcome is run-1's measurement)\n",
-										frame_count, now, r, anchor[r], s, oldh,
-										m_ash_live_handle[r], m_ash_repairs_cycle[r], m_ash_repairs,
-										endcur[r], f5c[r], p370[r]);
-							}
-							else
-							{
-								m_ash_yielded[r] = true;
-								++m_ash_yields;
-								logerror("ANCHOR_SHIELD: yield frame=%u t=%.6f rec=%d anchor=%08x slot=%d after=%u repairs (persistent ROM re-kill - P025 log-and-yield, shield stops fighting this cycle)\n",
-										frame_count, now, r, anchor[r], s, m_ash_repairs_cycle[r]);
-							}
-						}
-						else if (!m_ash_missed_logged[r])
-						{
-							// Slot no longer carries our id at all (recycled to
-							// another anchor / scrubbed) - restoring would clobber
-							// foreign state; log once and stand down this cycle.
-							m_ash_missed_logged[r] = true;
-							++m_ash_missed;
-							logerror("ANCHOR_SHIELD: missed frame=%u t=%.6f rec=%d anchor=%08x lookup=-2 hadlive=%d (anchor's slot recycled/scrubbed after its death - cannot restore without clobbering; ANCHOR_RESURRECT fixes the NEXT commit)\n",
-									frame_count, now, r, anchor[r], m_ash_live_handle[r]);
-						}
-					}
-					else if (m_ash_live_handle[r] < 0 && !m_ash_missed_logged[r] && (s < 0 || ringh[s] < 0))
-					{
-						// Dead or absent with NO live capture this walk = the
-						// anchor was BORN dead (class i) - nothing to restore.
-						m_ash_missed_logged[r] = true;
-						++m_ash_missed;
-						logerror("ANCHOR_SHIELD: missed frame=%u t=%.6f rec=%d anchor=%08x lookup=%d hadlive=-1 (no live capture this walk = born-dead commit - shield cannot restore; ANCHOR_RESURRECT domain)\n",
-								frame_count, now, r, anchor[r], (s >= 0) ? ringh[s] : -2);
-					}
-				}
-			}
-
-			// ---- gate 3: the ANCHOR RESURRECT dead-slot id scrub ----
-			if (m_patch_anchor_resurrect)
-			{
-				for (int s = 0; s < 4; s++)
-				{
-					if (ringh[s] >= 0)
-						continue; // GUARD: never touch a live handle
-					if (ringid[s] == 0xffffffff || ringid[s] == 0)
-						continue; // already scrubbed / ROM init state - nothing to do
-					u32 const oldid = ringid[s];
-					m_mainram[(0x002D2030 + 8 * s) / 4] = 0xffffffff;
-					ringid[s] = 0xffffffff; // keep the local view post-write consistent
-					++m_ars_scrubs;
-					logerror("ANCHOR_RESURRECT: scrub frame=%u t=%.6f slot=%d id=%08x h=%d matchrec0=%u matchrec1=%u scrubs_total=%u (dead slot id blanked - the next find-or-create of this id MISSES and creates+registers a FRESH entity; verdict-neutral for the completion check: -2 and -1 are both negative)\n",
-							frame_count, now, s, oldid, ringh[s],
-							(anchor[0] == oldid) ? 1u : 0u, (anchor[1] == oldid) ? 1u : 0u,
-							m_ars_scrubs);
-				}
-			}
-
-			// ---- prevs = POST-write state; 1/s status rails ----
 			for (int s = 0; s < 4; s++)
 			{
-				m_anl_prev_ringid[s] = ringid[s];
-				m_anl_prev_ringh[s] = ringh[s];
-			}
-			for (int r = 0; r < 2; r++)
-			{
-				m_anl_prev_anchor[r] = anchor[r];
-				m_anl_prev_desc[r] = desc[r];
-			}
-			m_anl_have_prev = true;
-
-			if (frame_count % 60 == 0)
-			{
-				if (m_trace_op20)
-					logerror("OP20: status frame=%u t=%.6f kills=%u regs=%u revives=%u rewrites=%u borndead=%u unreg=%u healthy=%u ring[%08x:%d %08x:%d %08x:%d %08x:%d] cur=%u anchor0=%08x anchor1=%08x\n",
-							frame_count, now, m_o20_kills, m_o20_regs, m_o20_revives,
-							m_o20_rewrites, m_o20_borndead, m_o20_unreg, m_o20_healthy,
-							ringid[0], ringh[0], ringid[1], ringh[1],
-							ringid[2], ringh[2], ringid[3], ringh[3],
-							ringcur, anchor[0], anchor[1]);
-				if (m_patch_anchor_shield)
-					logerror("ANCHOR_SHIELD: status frame=%u t=%.6f repairs=%u yields=%u missed=%u live0=%d id0=%08x live1=%d id1=%08x\n",
-							frame_count, now, m_ash_repairs, m_ash_yields, m_ash_missed,
-							m_ash_live_handle[0], m_ash_live_id[0],
-							m_ash_live_handle[1], m_ash_live_id[1]);
-				if (m_patch_anchor_resurrect)
-					logerror("ANCHOR_RESURRECT: status frame=%u t=%.6f scrubs=%u ring[%08x:%d %08x:%d %08x:%d %08x:%d]\n",
-							frame_count, now, m_ars_scrubs,
-							ringid[0], ringh[0], ringid[1], ringh[1],
-							ringid[2], ringh[2], ringid[3], ringh[3]);
-			}
-		}
-
-		// P055 EXPERIMENT (branch patch/boat-jitter-trace): READ-ONLY per-vblank
-		// BLUE entity-ingest source/freshness/reversal trace.  Full design + the
-		// Phase-1 finding live in the member-block comment.  Runs ONLY on the
-		// connector/blue while staging mode 0x802F3FD0==2; diffs the two ingested
-		// actor-position triples per live slot and tags each REVERSAL (delta
-		// sign-flip = the shake) RX/LOCAL + FRESH/REPLAY from the device bridge -
-		// the A-vs-B discriminator.
-		if (m_bj_trace && m_c139 && m_c139->comm_is_connector()
-				&& m_mainram[0x002F3FD0 / 4] == 2)
-		{
-			double const bj_now = machine().time().as_double();
-			u32 const cabid = m_mainram[0x002F3FD4 / 4];        // cab-id landmark (context)
-			u32 const rxgen = m_c139->rx_apply_gen();           // device delivered-complete-frame generation
-			bool const ingest_this_vbl = m_bj_have_prev && (rxgen != m_bj_prev_rxgen);
-			bool const last_replay = m_c139->last_delivered_was_replay();
-			char const *const src = ingest_this_vbl ? "RX" : "LOCAL";
-			char const *const fresh = ingest_this_vbl
-					? (last_replay ? " replay=1 fresh=0" : " replay=0 fresh=1") : "";
-
-			// Component -> actor-record byte offset: 0..2 = field A (op0x21-0x33
-			// coord triple), 3..5 = field B (op0x17-0x19 packed transform).
-			static u32 const bj_off[6]  = { 0x1F4, 0x1F8, 0x1FC, 0xA8, 0xAC, 0xB0 };
-			static char const bj_axis[6] = { 'X', 'Y', 'Z', 'X', 'Y', 'Z' };
-			static char const *const bj_fld[6] = { "A", "A", "A", "B", "B", "B" };
-
-			int lines = 0;
-			u32 live_count = 0;
-			for (int s = 0; s < BJ_SLOTS; s++)
-			{
-				u32 const base = 0x002F4DB0 + u32(s) * 0x2B8;
-				s32 const status = s32(m_mainram[(base + 0x18) / 4]); // +0x18 validity guard (<0 = live)
-				bj_slot &p = m_bj_prev[s];
-				if (status >= 0)
-				{
-					p.live = false;
-					continue;
-				}
-				++live_count;
-				s32 cur[6], d[6];
-				for (int c = 0; c < 6; c++)
-				{
-					cur[c] = s32(m_mainram[(base + bj_off[c]) / 4]);
-					d[c] = p.live ? (cur[c] - p.v[c]) : 0;
-				}
-				// Reversal = current delta flips sign vs the previous delta, both
-				// above the noise floor (the actual "snap backward then forward").
-				if (p.live && lines < BJ_MAX_LINES_FRAME)
-				{
-					for (int c = 0; c < 6; c++)
-					{
-						bool const rev = (d[c] > BJ_MIN_MOVE && p.d[c] < -BJ_MIN_MOVE)
-								|| (d[c] < -BJ_MIN_MOVE && p.d[c] > BJ_MIN_MOVE);
-						if (!rev)
-							continue;
-						++m_bj_reversals;
-						if (ingest_this_vbl) ++m_bj_rx_moves; else ++m_bj_local_moves;
-						u32 const idword = m_mainram[(base + 0x1F0) / 4]; // (id<<8)|sub (op0x2A-0x33 spawns)
-						u32 const typ    = m_mainram[(base + 0x1EC) / 4]; // record-type tag
-						logerror("BOATJITTER: reversal frame=%u t=%.6f slot=%d id=%04x typ=%08x fld=%s%03x comp=%c prev=%d cur=%d dprev=%d dcur=%d src=%s%s rxgen=%u revs=%u\n",
-								frame_count, bj_now, s, unsigned((idword >> 8) & 0xffff), typ,
-								bj_fld[c], bj_off[c], bj_axis[c], p.v[c], cur[c], p.d[c], d[c],
-								src, fresh, rxgen, m_bj_reversals);
-						if (++lines >= BJ_MAX_LINES_FRAME)
-							break;
-					}
-				}
-				for (int c = 0; c < 6; c++)
-				{
-					p.v[c] = cur[c];
-					p.d[c] = d[c];
-				}
-				p.live = true;
-			}
-
-			m_bj_prev_rxgen = rxgen;
-			m_bj_have_prev = true;
-
-			if (frame_count % 60 == 0)
-				logerror("BOATJITTER: status frame=%u t=%.6f live=%u reversals=%u rx_moves=%u local_moves=%u fresh=%u replay=%u rxgen=%u last_ingest=%s cabid=%08x\n",
-						frame_count, bj_now, live_count, m_bj_reversals, m_bj_rx_moves,
-						m_bj_local_moves, m_c139->rx_fresh_count(), m_c139->rx_replay_count(),
-						rxgen, ingest_this_vbl ? (last_replay ? "REPLAY" : "FRESH") : "none", cabid);
-		}
-
-		// P056 EXPERIMENT (branch patch/boat-render-trace): READ-ONLY per-vblank
-		// BLUE RENDERED-position + liveness trace.  Full design lives in the
-		// member-block comment.  Watches the rendered world pos +0x30/34/38 (the
-		// visible shake) on ACTIVE actors (live AND real id) and logs a REVERSAL on
-		// any component's delta sign-flip, plus a liveness line on any real-actor
-		// live-flag transition, each tagged RX/LOCAL + FRESH/REPLAY from the P055
-		// device bridge.  Connector/blue + staging-mode-2 gated (arm on blue).
-		if (m_br_trace && m_c139 && m_c139->comm_is_connector()
-				&& m_mainram[0x002F3FD0 / 4] == 2)
-		{
-			double const br_now = machine().time().as_double();
-			u32 const cabid = m_mainram[0x002F3FD4 / 4];        // cab-id landmark (context)
-			u32 const rxgen = m_c139->rx_apply_gen();           // device delivered-complete-frame generation
-			bool const ingest_this_vbl = m_br_have_prev && (rxgen != m_br_prev_rxgen);
-			bool const last_replay = m_c139->last_delivered_was_replay();
-			char const *const src = ingest_this_vbl ? "RX" : "LOCAL";
-			char const *const fresh = ingest_this_vbl
-					? (last_replay ? " replay=1 fresh=0" : " replay=0 fresh=1") : "";
-
-			static u32 const br_off[3]  = { 0x30, 0x34, 0x38 }; // rendered world pos X/Y/Z (renderer 0x80089C78)
-			static char const br_axis[3] = { 'X', 'Y', 'Z' };
-
-			int lines = 0;
-			u32 live_count = 0;     // slots with +0x18 < 0
-			u32 active_count = 0;   // live AND real id (the id-filter's effect is visible in the rail)
-			for (int s = 0; s < BR_SLOTS; s++)
-			{
-				u32 const base = 0x002F4DB0 + u32(s) * 0x2B8;
-				s32 const status = s32(m_mainram[(base + 0x18) / 4]); // +0x18 validity guard (<0 = live)
-				u32 const idword = m_mainram[(base + 0x1F0) / 4];     // (id<<8)|sub
-				u32 const id     = unsigned((idword >> 8) & 0xffff);
-				u32 const typ    = m_mainram[(base + 0x1EC) / 4];     // record-type tag
-				bool const live  = status < 0;
-				bool const real  = live && id != 0x0000 && id != 0xffff; // skip empty/placeholder slots
-				br_slot &p = m_br_prev[s];
-
-				bool const prev_live = p.live;
-				bool const prev_real = p.live && p.id != 0x0000 && p.id != 0xffff;
-				u32 const prev_id = p.id;
-
-				if (live) ++live_count;
-				if (real) ++active_count;
-
-				// PART 2 - liveness transition (any real actor entering/leaving live).
-				// Gated on m_br_have_prev so already-live actors at mode-2 entry don't
-				// spuriously log.  id reported = the real side (prev_id when going dead).
-				if (m_br_have_prev && live != prev_live && (real || prev_real)
-						&& lines < BR_MAX_LINES_FRAME)
-				{
-					++m_br_live_transitions;
-					logerror("BOATRENDER: live frame=%u t=%.6f slot=%d id=%04x typ=%08x old_live=%d new_live=%d src=%s%s rxgen=%u trans=%u\n",
-							frame_count, br_now, s,
-							unsigned(real ? id : prev_id), typ,
-							prev_live ? 1 : 0, live ? 1 : 0, src, fresh, rxgen,
-							m_br_live_transitions);
-					++lines;
-				}
-
-				// PART 1 - rendered-position reversal (ACTIVE actors only).  Position
-				// basis (p.v/p.d/p.sampled) is updated even when the log cap is hit, so
-				// a busy vblank never corrupts the next frame's delta.
-				if (real)
-				{
-					s32 cur[3], d[3];
-					for (int c = 0; c < 3; c++)
-					{
-						cur[c] = s32(m_mainram[(base + br_off[c]) / 4]);
-						d[c] = p.sampled ? (cur[c] - p.v[c]) : 0;
-					}
-					if (p.sampled && lines < BR_MAX_LINES_FRAME)
-					{
-						for (int c = 0; c < 3; c++)
-						{
-							bool const rev = (d[c] > BR_MIN_MOVE && p.d[c] < -BR_MIN_MOVE)
-									|| (d[c] < -BR_MIN_MOVE && p.d[c] > BR_MIN_MOVE);
-							if (!rev)
-								continue;
-							++m_br_reversals;
-							if (ingest_this_vbl) ++m_br_rx_moves; else ++m_br_local_moves;
-							logerror("BOATRENDER: reversal frame=%u t=%.6f slot=%d id=%04x typ=%08x comp=%c prev=%d cur=%d dprev=%d dcur=%d src=%s%s rxgen=%u revs=%u\n",
-									frame_count, br_now, s, id, typ, br_axis[c],
-									p.v[c], cur[c], p.d[c], d[c],
-									src, fresh, rxgen, m_br_reversals);
-							if (++lines >= BR_MAX_LINES_FRAME)
-								break;
-						}
-					}
-					for (int c = 0; c < 3; c++)
-					{
-						p.v[c] = cur[c];
-						p.d[c] = d[c];
-					}
-					p.sampled = true;
-				}
-				else
-				{
-					p.sampled = false; // break the delta basis across a dead/empty gap
-				}
-
-				p.live = live;
-				p.id = id;
-			}
-
-			m_br_prev_rxgen = rxgen;
-			m_br_have_prev = true;
-
-			if (frame_count % 60 == 0)
-				logerror("BOATRENDER: status frame=%u t=%.6f active=%u live=%u reversals=%u rx_moves=%u local_moves=%u live_trans=%u fresh=%u replay=%u rxgen=%u last_ingest=%s cabid=%08x\n",
-						frame_count, br_now, active_count, live_count, m_br_reversals,
-						m_br_rx_moves, m_br_local_moves, m_br_live_transitions,
-						m_c139->rx_fresh_count(), m_c139->rx_replay_count(),
-						rxgen, ingest_this_vbl ? (last_replay ? "REPLAY" : "FRESH") : "none", cabid);
-		}
-
-		// P059 EXPERIMENT (branch patch/poscorr-trace): READ-ONLY per-vblank BLUE
-		// correction-cadence + local-drift trace on the remote actor's world-pos
-		// BASE +0xCC (type-1) / +0x80 (type-2).  Full design + the write-tap-vs-
-		// sampling decision live in the member-block comment.  Runs ONLY on the
-		// connector/blue while staging mode 0x802F3FD0==2.  A base move in a vblank
-		// where the device rx-apply generation advanced (an op4B/4C snapshot landed)
-		// is an INGEST CORRECTION; a base move with no ingest this window is LOCAL
-		// DRIFT.  Reports: corrections/sec + the inter-correction gap histogram, and
-		// the local drift magnitude accumulated on +0xCC between corrections - the
-		// two numbers the FIX FAMILY B verdict needs (correction rate + drift owed).
-		if (m_pc_trace && m_c139 && m_c139->comm_is_connector()
-				&& m_mainram[0x002F3FD0 / 4] == 2)
-		{
-			double const pc_now = machine().time().as_double();
-			u32 const cabid = m_mainram[0x002F3FD4 / 4];        // cab-id landmark (context)
-			u32 const rxgen = m_c139->rx_apply_gen();           // device delivered-complete-frame generation
-			bool const ingest_this_vbl = m_pc_pos_have_prev && (rxgen != m_pc_prev_rxgen);
-			bool const last_replay = m_c139->last_delivered_was_replay();
-			char const *const fresh = ingest_this_vbl ? (last_replay ? "replay" : "fresh") : "none";
-
-			int lines = 0;
-			u32 remote_live = 0;
-			for (int s = 0; s < PC_SLOTS; s++)
-			{
-				u32 const base = 0x002F4DB0 + u32(s) * 0x2B8;
-				s32 const status = s32(m_mainram[(base + 0x18) / 4]); // +0x18 bit31 set (<0) = remote/live
-				pc_slot &p = m_pc_prev[s];
-				if (status >= 0)
-				{
-					// not a remote actor this frame - break the delta basis and drop
-					// the gap/drift state so a later re-use of the slot never carries
-					// a bogus inter-correction gap across the dead gap.
-					p.sampled = false;
-					p.corr_seen = false;
-					p.drift_accum = 0.f;
-					p.drift_max = 0.f;
-					p.anim_sampled = false;   // P061 RIDER: anim/kf basis breaks with the slot
-					continue;
-				}
-				++remote_live;
-
-				// Read BOTH world-pos bases as IEEE floats (the transform tick
-				// 0x80100014 composes +0xCC and 0x8010C5B0 composes +0x80 via the
-				// FPU).  Track both and attribute a move to whichever base moved
-				// more - avoids a wrong type-1/type-2 decode killing the measurement.
-				float cc[3], w80[3];
-				for (int c = 0; c < 3; c++)
-				{
-					u32 const wc = m_mainram[(base + 0xCC + u32(c) * 4) / 4];
-					u32 const w8 = m_mainram[(base + 0x80 + u32(c) * 4) / 4];
-					std::memcpy(&cc[c], &wc, 4);
-					std::memcpy(&w80[c], &w8, 4);
-				}
-
-				// P061 RIDER: did either base move on this slot this vblank?
-				// (set below; the anim-layer discriminator keys on its negation)
-				bool base_moved = false;
-
-				if (p.sampled)
-				{
-					// Largest finite per-component delta on each base.
-					float mag_cc = 0.f, mag_80 = 0.f;
-					int comp_cc = -1, comp_80 = -1;
-					for (int c = 0; c < 3; c++)
-					{
-						float const dcc = cc[c] - p.cc[c];
-						if (std::isfinite(dcc) && std::fabs(dcc) < PC_SANE_MAX
-								&& std::fabs(dcc) > mag_cc) { mag_cc = std::fabs(dcc); comp_cc = c; }
-						float const d80 = w80[c] - p.w80[c];
-						if (std::isfinite(d80) && std::fabs(d80) < PC_SANE_MAX
-								&& std::fabs(d80) > mag_80) { mag_80 = std::fabs(d80); comp_80 = c; }
-					}
-					bool const use_cc = mag_cc >= mag_80;
-					float const mag  = use_cc ? mag_cc : mag_80;
-					int const comp   = use_cc ? comp_cc : comp_80;
-					float const prevv = use_cc ? p.cc[comp >= 0 ? comp : 0] : p.w80[comp >= 0 ? comp : 0];
-					float const curv  = use_cc ? cc[comp >= 0 ? comp : 0] : w80[comp >= 0 ? comp : 0];
-
-					if (comp >= 0 && mag > PC_MIN_MOVE)
-					{
-						base_moved = true;   // P061 RIDER
-						if (ingest_this_vbl)
-						{
-							// INGEST CORRECTION: the base snapped in a vblank an
-							// op4B/4C snapshot was delivered.  Log the gap since the
-							// last correction on THIS slot + the drift that had built
-							// up (how far local prediction wandered before the snap).
-							u32 const gap = p.corr_seen ? (frame_count - p.last_corr_frame) : 0;
-							if (p.corr_seen)
-							{
-								int b = 0;
-								if (gap <= 1) b = 0; else if (gap == 2) b = 1;
-								else if (gap <= 4) b = 2; else if (gap <= 8) b = 3;
-								else if (gap <= 16) b = 4; else b = 5;
-								++m_pc_gap_hist[b];
-							}
-							++m_pc_corr_win;
-							++m_pc_corr_tot;
-							if (last_replay) ++m_pc_corr_replay_win; else ++m_pc_corr_fresh_win;
-							m_pc_snap_sum += mag;
-							if (lines < PC_MAX_LINES_FRAME)
-							{
-								logerror("POSCORR: corr frame=%u t=%.6f slot=%d base=+0x%s comp=%c snap=%.3f gap=%u drift_pre=%.3f src=%s prev=%.3f cur=%.3f raw=%08x rxgen=%u corr=%u\n",
-										frame_count, pc_now, s, use_cc ? "CC" : "80",
-										"XYZ"[comp], mag, gap, p.drift_accum, fresh,
-										prevv, curv,
-										unsigned(m_mainram[(base + (use_cc ? 0xCC : 0x80) + u32(comp) * 4) / 4]),
-										rxgen, m_pc_corr_tot);
-								++lines;
-							}
-							p.drift_accum = 0.f;
-							p.drift_max = 0.f;
-							p.last_corr_frame = frame_count;
-							p.corr_seen = true;
-						}
-						else
-						{
-							// LOCAL DRIFT: base moved with no ingest this window =
-							// blue's local transform tick re-deriving the base from
-							// stale inputs.  Accumulate the excursion (no per-event
-							// line - the aggregate goes in the 1/s rail).
-							p.drift_accum += mag;
-							if (p.drift_accum > p.drift_max) p.drift_max = p.drift_accum;
-							if (p.drift_max > m_pc_drift_max_seen) m_pc_drift_max_seen = p.drift_max;
-							++m_pc_local_events_win;
-							m_pc_local_sum_win += mag;
-						}
-					}
-				}
-
-				// P061 RIDER (audit D): anim-layer discriminator.  Diff the anim/
-				// orientation matrix word +0x3C (raw) and the keyframe counter
-				// +0x1A (low halfword of the +0x18 status word already read above
-				// - big-endian layout) against last vblank.  A change in a vblank
-				// where BOTH world bases stayed static (base_moved false) is
-				// pose-layer motion with the base pinned - the still-shudder
-				// candidate the +0xCC arc never measured.  READ-ONLY; counts go
-				// to the 1/s digest; per-event lines capped PC_ANIM_MAX_LINES_WIN
-				// per window.
-				u32 const anim_w = m_mainram[(base + 0x3C) / 4];
-				u16 const kf_w = u16(u32(status) & 0xffff);
-				if (p.anim_sampled)
-				{
-					bool const anim_chg = (anim_w != p.anim);
-					bool const kf_chg = (kf_w != p.kf);
-					if (anim_chg) ++m_pc_anim_chg_win;
-					if (kf_chg) ++m_pc_kf_chg_win;
-					if ((anim_chg || kf_chg) && p.sampled && !base_moved)
-					{
-						++m_pc_anim_ccstatic_win;
-						if (m_pc_anim_lines_win < PC_ANIM_MAX_LINES_WIN)
-						{
-							++m_pc_anim_lines_win;
-							logerror("POSCORR: anim-while-static frame=%u t=%.6f slot=%d anim=%08x->%08x kf=%04x->%04x src=%s (+0x3C anim matrix / +0x1A keyframe advanced in a vblank the +0xCC/+0x80 base was STATIC - pose-layer motion candidate for the still-shudder)\n",
-									frame_count, pc_now, s, p.anim, anim_w,
-									unsigned(p.kf), unsigned(kf_w), fresh);
-						}
-					}
-				}
-				p.anim = anim_w;
-				p.kf = kf_w;
-				p.anim_sampled = true;
-
-				for (int c = 0; c < 3; c++) { p.cc[c] = cc[c]; p.w80[c] = w80[c]; }
-				p.sampled = true;
-			}
-
-			m_pc_prev_rxgen = rxgen;
-			m_pc_pos_have_prev = true;
-			m_pc_remote_live_last = remote_live;
-
-			if (frame_count % 60 == 0)
-			{
-				float const mean_snap = m_pc_corr_tot ? (m_pc_snap_sum / float(m_pc_corr_tot)) : 0.f;
-				logerror("POSCORR: rom-status frame=%u t=%.6f remote_live=%u corr_win=%u corr_fresh=%u corr_replay=%u corr_tot=%u mean_snap=%.3f local_events=%u local_sum=%.3f drift_max=%.3f gaps[1=%u 2=%u 3-4=%u 5-8=%u 9-16=%u 17+=%u] dev_fresh=%u dev_replay=%u rxgen=%u cabid=%08x\n",
-						frame_count, pc_now, m_pc_remote_live_last, m_pc_corr_win,
-						m_pc_corr_fresh_win, m_pc_corr_replay_win, m_pc_corr_tot,
-						mean_snap, m_pc_local_events_win, m_pc_local_sum_win,
-						m_pc_drift_max_seen,
-						m_pc_gap_hist[0], m_pc_gap_hist[1], m_pc_gap_hist[2],
-						m_pc_gap_hist[3], m_pc_gap_hist[4], m_pc_gap_hist[5],
-						m_c139->rx_fresh_count(), m_c139->rx_replay_count(),
-						rxgen, cabid);
-				m_pc_corr_win = 0;
-				m_pc_corr_fresh_win = 0;
-				m_pc_corr_replay_win = 0;
-				m_pc_local_events_win = 0;
-				m_pc_local_sum_win = 0.f;
-
-				// P061 RIDER: 1/s anim-layer digest.  Read alongside the
-				// rom-status line above: while_static>0 with corr_win/
-				// local_events quiet during a user-called still-shudder window
-				// = pose-layer motion CONFIRMED with the base pinned.
-				logerror("POSCORR: anim-status frame=%u t=%.6f anim_chg=%u kf_chg=%u while_static=%u remote_live=%u (slot-vblanks this window where +0x3C anim matrix / +0x1A keyframe changed; while_static = changed while BOTH world bases were static that vblank - the pose-layer still-shudder discriminator)\n",
-						frame_count, pc_now, m_pc_anim_chg_win, m_pc_kf_chg_win,
-						m_pc_anim_ccstatic_win, m_pc_remote_live_last);
-				m_pc_anim_chg_win = 0;
-				m_pc_kf_chg_win = 0;
-				m_pc_anim_ccstatic_win = 0;
-				m_pc_anim_lines_win = 0;
-			}
-		}
-
-		// P065 EXPERIMENT (branch patch/corr-smooth): VIEWER-SIDE CORRECTION
-		// BLENDING on remote actors' world-pos base (s32 integer triple - the
-		// phase-1 format verification and the full design live in the member-
-		// block comment).  Runs on BOTH cabs (each cab is the remote-viewer of
-		// the peer's entities) while staging mode 0x802F3FD0 == 2.  Placed
-		// AFTER the P059 POSCORR scan so the trace samples the RAW ROM values
-		// (its correction counts stay comparable to P059-P064); after each
-		// blend write we refresh POSCORR's per-slot cache so it never
-		// attributes our own steps as ROM movement.
-		if (m_cs_on && m_c139)
-		{
-			bool const cs_mode2 = (m_mainram[0x002F3FD0 / 4] == 2);
-			if (!cs_mode2)
-			{
-				// staging-mode-2 loss: fail toward stock - drop ALL blend and
-				// tracking state so nothing stale carries across a scene/mode
-				// transition (any in-flight remainder simply never lands; the
-				// ROM's own values stand untouched).
-				if (m_cs_mode2_prev)
-				{
-					for (int s = 0; s < CS_SLOTS; s++)
-					{
-						m_cs_slot[s].active = false;
-						m_cs_slot[s].frames_left = 0;
-					}
-					m_cs_have_prev = false;
-				}
-				m_cs_mode2_prev = false;
-			}
-			else
-			{
-				u32 const rxgen = m_c139->rx_apply_gen();   // delivered-complete-frame generation (device bridge armed by this env too)
-				bool const ingest_this_vbl = m_cs_have_prev && (rxgen != m_cs_prev_rxgen);
-				u32 active_blends = 0;
-
-				for (int s = 0; s < CS_SLOTS; s++)
-				{
-					u32 const base = 0x002F4DB0 + u32(s) * 0x2B8;
-					cs_slot &p = m_cs_slot[s];
-
-					// Gate exactly like the renderer's own dispatch (0x80089CD4-
-					// 0x80089D68): REMOTE (+0x18 bit31 set), valid (+0x08
-					// halfword bit 0x8000 clear = word bit31 of the big-endian
-					// +0x08 word), record type 1 or 2 (+0x0A halfword = low
-					// half) - the type selects WHICH base triple the renderer
-					// adds (+0xCC type-1 / +0x80 type-2).
-					s32 const w18 = s32(m_mainram[(base + 0x18) / 4]);
-					u32 const w08 = m_mainram[(base + 0x08) / 4];
-					u16 const rtype = u16(w08 & 0xffff);
-					if (w18 >= 0 || (w08 & 0x80000000) != 0 || (rtype != 1 && rtype != 2))
-					{
-						// not a blendable remote actor - stock behavior.
-						if (p.active && p.frames_left)
-							{ ++m_cs_snapthru_win; ++m_cs_snapthru_tot; }
-						p.active = false;
-						p.frames_left = 0;
-						continue;
-					}
-
-					u32 const off = (rtype == 1) ? 0xCC : 0x80;
-					u16 const rid = u16(m_mainram[(base + 0x98) / 4] & 0xffff);  // +0x9A actor id (the op4B/4C snapshot lookup key)
-					s32 cur[3];
-					bool fmt_bad = false;
-					for (int c = 0; c < 3; c++)
-					{
-						cur[c] = s32(m_mainram[(base + off + u32(c) * 4) / 4]);
-						if (cur[c] > CS_SANE_ABS || cur[c] < -CS_SANE_ABS)
-							fmt_bad = true;
-					}
-					if (fmt_bad)
-					{
-						// format rail (the task's fallback): not a plausible
-						// world coordinate - PASS THROUGH unsmoothed.
-						++m_cs_fmtrej_win; ++m_cs_fmtrej_tot;
-						if (p.active && p.frames_left)
-							{ ++m_cs_snapthru_win; ++m_cs_snapthru_tot; }
-						p.active = false;
-						p.frames_left = 0;
-						continue;
-					}
-
-					if (!p.active || p.type != u8(rtype) || p.id != rid)
-					{
-						// first sight or slot REUSE (id/type changed) - stock
-						// snap behavior; (re)acquire passive tracking only.
-						if (p.active && p.frames_left)
-							{ ++m_cs_snapthru_win; ++m_cs_snapthru_tot; }
-						p.active = true;
-						p.type = u8(rtype);
-						p.id = rid;
-						p.frames_left = 0;
-						for (int c = 0; c < 3; c++) { p.seen[c] = cur[c]; p.rem[c] = 0; }
-						continue;
-					}
-
-					// DETECT a correction: the device rx-apply gen advanced
-					// this vblank AND the watched base moved beyond the epsilon
-					// (word-compare first, then s32 decode - the P059-P064
-					// detection).  rxgen is GLOBAL not per-slot (documented
-					// P055 limitation), so a local-writer move in an ingest
-					// vblank can also start a blend - bounded harm: the move is
-					// re-released over N frames, and MIND is the tuning knob if
-					// that ever reads as motion lag.
-					if (ingest_this_vbl
-							&& (cur[0] != p.seen[0] || cur[1] != p.seen[1] || cur[2] != p.seen[2]))
-					{
-						s64 d[3];
-						s64 mag = 0;
-						for (int c = 0; c < 3; c++)
-						{
-							d[c] = s64(cur[c]) - s64(p.seen[c]);
-							s64 const a = (d[c] < 0) ? -d[c] : d[c];
-							if (a > mag) mag = a;
-						}
-						if (mag >= s64(m_cs_mind))
-						{
-							if (mag > s64(m_cs_maxd))
-							{
-								// TELEPORT / respawn / scene change: DO NOT
-								// blend - the snap lands instantly (stock).
-								++m_cs_snapthru_win; ++m_cs_snapthru_tot;
-								p.frames_left = 0;
-								for (int c = 0; c < 3; c++) { p.seen[c] = cur[c]; p.rem[c] = 0; }
-								continue;
-							}
-							// start / RETARGET the blend from the current
-							// displayed value: the new remainder is (ROM's new
-							// word - displayed); any old remainder is subsumed
-							// because the ROM's word already embodies the full
-							// authoritative position.
-							for (int c = 0; c < 3; c++)
-								p.rem[c] = s32(d[c]);
-							p.frames_left = m_cs_frames;
-							++m_cs_blends_win; ++m_cs_blends_tot;
-						}
-					}
-
-					if (p.frames_left > 0)
-					{
-						// release one step: base = cur - rem + rem/frames_left.
-						// Computed RELATIVE to the freshly-read word, so a
-						// local-writer advance (or full re-derivation) between
-						// our writes is preserved, never forced back ("re-
-						// detect rather than force"); the final frame applies
-						// the exact remainder (rem/1) so the blend converges
-						// precisely on the ROM's current word.
-						s32 step[3], neww[3];
-						bool rail_bad = false;
-						for (int c = 0; c < 3; c++)
-						{
-							step[c] = p.rem[c] / s32(p.frames_left);
-							s64 const nw = s64(cur[c]) - s64(p.rem[c]) + s64(step[c]);
-							if (nw > s64(CS_SANE_ABS) || nw < -s64(CS_SANE_ABS))
-								rail_bad = true;
-							neww[c] = s32(nw);
-						}
-						if (rail_bad)
-						{
-							// never write an implausible value - abort to stock.
-							++m_cs_snapthru_win; ++m_cs_snapthru_tot;
-							p.frames_left = 0;
-							for (int c = 0; c < 3; c++) { p.seen[c] = cur[c]; p.rem[c] = 0; }
-							continue;
-						}
-						for (int c = 0; c < 3; c++)
-						{
-							if (neww[c] != cur[c])
-								m_mainram[(base + off + u32(c) * 4) / 4] = u32(neww[c]);
-							p.rem[c] -= step[c];
-							p.seen[c] = neww[c];
-						}
-						p.frames_left--;
-						++m_cs_steps_win;
-						if (p.frames_left > 0)
-							++active_blends;
-
-						// keep the P059 POSCORR trace blind to OUR writes:
-						// refresh its per-slot cache (the float view of the
-						// same words) so its next-vblank delta basis equals
-						// RAM and its correction counts stay comparable.
-						if (m_pc_trace && m_c139->comm_is_connector() && m_pc_prev[s].sampled)
-						{
-							for (int c = 0; c < 3; c++)
-							{
-								float f;
-								u32 const w = u32(neww[c]);
-								std::memcpy(&f, &w, 4);
-								if (rtype == 1) m_pc_prev[s].cc[c] = f;
-								else            m_pc_prev[s].w80[c] = f;
-							}
-						}
-					}
-					else
-					{
-						// no active blend: passive tracking.
-						for (int c = 0; c < 3; c++) p.seen[c] = cur[c];
-					}
-				}
-
-				m_cs_prev_rxgen = rxgen;
-				m_cs_have_prev = true;
-				m_cs_mode2_prev = true;
-
-				if (frame_count % 60 == 0)
-				{
-					logerror("CORR_SMOOTH: status frame=%u t=%.6f blends=%u steps=%u snap_throughs=%u format_rejects=%u active_blends=%u tot[blends=%u snapthru=%u fmtrej=%u] N=%u maxd=%d mind=%d rxgen=%u\n",
-							frame_count, machine().time().as_double(),
-							m_cs_blends_win, m_cs_steps_win, m_cs_snapthru_win,
-							m_cs_fmtrej_win, active_blends,
-							m_cs_blends_tot, m_cs_snapthru_tot, m_cs_fmtrej_tot,
-							unsigned(m_cs_frames), m_cs_maxd, m_cs_mind, rxgen);
-					m_cs_blends_win = 0;
-					m_cs_steps_win = 0;
-					m_cs_snapthru_win = 0;
-					m_cs_fmtrej_win = 0;
-				}
+				if (ringh[s] >= 0)
+					continue; // GUARD: never touch a live handle
+				if (ringid[s] == 0xffffffff || ringid[s] == 0)
+					continue; // already scrubbed / ROM init state - nothing to do
+				u32 const oldid = ringid[s];
+				m_mainram[(0x002D2030 + 8 * s) / 4] = 0xffffffff;
+				++m_ars_scrubs;
+				logerror("ANCHOR_RESURRECT: scrub frame=%u t=%.6f slot=%d id=%08x h=%d matchrec0=%u matchrec1=%u scrubs_total=%u (dead slot id blanked - the next find-or-create of this id MISSES and creates+registers a FRESH entity; verdict-neutral for the completion check: -2 and -1 are both negative)\n",
+						frame_count, now, s, oldid, ringh[s],
+						(anchor0 == oldid) ? 1u : 0u, (anchor1 == oldid) ? 1u : 0u,
+						m_ars_scrubs);
 			}
 		}
 
@@ -11248,8 +7894,8 @@ void namcos23_state::machine_start()
 	m_c422_irqnum = MIPS3_IRQ3;
 	m_rs232_irqnum = MIPS3_IRQ5;
 
-	// P001 EXPERIMENT (H1 "keepalive keystone", cherry-picked from
-	// patch/keepalive-floor onto patch/continuous-arm): the in-game link
+	// P001 (H1 "keepalive keystone", branch
+	// patch/keepalive-floor): the in-game link
 	// keepalive floor.  A numeric value 1..16 is taken as the floor value
 	// ("1" = exact P001 semantics); anything non-numeric or out of range
 	// falls back to 1 (unchanged pre-P067 parse).  Applied per-vblank in
@@ -11273,405 +7919,25 @@ void namcos23_state::machine_start()
 	else
 		logerror("KEEPALIVE_FLOOR: DISABLED (NAMCOS23_PATCH_KEEPALIVE_FLOOR=0 kill switch - adopted default 2 overridden; stock keepalive behavior)\n");
 
-	// P002 EXPERIMENT (H2 "drift lockstep", branch patch/vblank-lockstep):
-	// the driver-side 1/s status tap.  The barrier in namco_c139 reads the
-	// same variable in its own device_start() - keep the two resolutions
-	// agreeing.  P067 (patch/defaults-on): ADOPTED - armed by DEFAULT;
-	// NAMCOS23_PATCH_VBLANK_LOCKSTEP=0 is the kill switch (fully inert, the
-	// pre-P067 unset path).
-	bool lockstep_from_env = false;
-	char const *const lockstep_val = patch_env_or_default("NAMCOS23_PATCH_VBLANK_LOCKSTEP", "1", lockstep_from_env);
-	m_patch_vblank_lockstep = lockstep_val != nullptr;
-	m_lockstep_tap_max_drift = 0;
-	m_lockstep_tap_min_keepalive = 0xffffffff;
-	m_lockstep_tap_mode2_samples = 0;
-	if (m_patch_vblank_lockstep)
-		logerror("VBLANK_LOCKSTEP: tap armed (NAMCOS23_PATCH_VBLANK_LOCKSTEP=%s %s) - 1/s status of max drift word 0x802F3504 / min keepalive 0x802F3FD8 (mode-2 samples) + C139 token/stall counters\n",
-				lockstep_val, patch_env_src(lockstep_from_env, lockstep_val).c_str());
-	else
-		logerror("VBLANK_LOCKSTEP: driver tap DISABLED (NAMCOS23_PATCH_VBLANK_LOCKSTEP=0 kill switch - adopted default overridden)\n");
+	// VBLANK_LOCKSTEP [P002] is resolved and banner-logged by the C139 device
+	// itself (device_start); the barrier runs in namco_c139::vblank_tick().
+	// (The driver-side 1/s drift/keepalive status tap and its env read were
+	// removed in P072 phase C.)
 
-	// P003 EXPERIMENT (H3 "round-start arming race", branch
-	// patch/round-start-arm): arm the partner re-arm from the environment,
-	// same gate idiom as P001/P002 and independent of the P002 gate so the
-	// user can toggle each separately.  Applied per-vblank in vblank().
-	// Experiment branch only - never merge to milestone.
-	char const *const rsa_env = std::getenv("NAMCOS23_PATCH_ROUND_START_ARM");
-	m_patch_round_start_arm = rsa_env && rsa_env[0] != '\0'
-			&& !(rsa_env[0] == '0' && rsa_env[1] == '\0');
-	m_rsa_have_prev = false;
-	m_rsa_prev_keepalive = 0;
-	m_rsa_prev_rec0 = 0;
-	m_rsa_prev_rec1 = 0;
-	m_rsa_low24_changes = 0;
-	if (m_patch_round_start_arm)
-		logerror("ROUND_START_ARM: armed (NAMCOS23_PATCH_ROUND_START_ARM=%s) - on keepalive 0x802F3FD8 refill edge 0->positive while mode word 0x802F3FD0 == 2, OR bit 0x40000000 into the partner record +0x370 word; read-only bit13 + partner low-24 observability\n",
-				rsa_env);
-
-	// P008 EXPERIMENT (branch patch/continuous-arm): arm the continuous
-	// partner re-arm from the environment, same gate idiom as P001/P002/P003
-	// and independent of all other gates.  Applied per-vblank in vblank(),
-	// after the P001 floor write.  Experiment branch only - never merge to
-	// milestone.
-	char const *const ca_env = std::getenv("NAMCOS23_PATCH_CONTINUOUS_ARM");
-	m_patch_continuous_arm = ca_env && ca_env[0] != '\0'
-			&& !(ca_env[0] == '0' && ca_env[1] == '\0');
-	m_ca_rearm_count = 0;
-	if (m_patch_continuous_arm)
-		logerror("CONTINUOUS_ARM: armed (NAMCOS23_PATCH_CONTINUOUS_ARM=%s) - every vblank while mode word 0x802F3FD0 == 2 and keepalive 0x802F3FD8 > 0 (post-floor), OR bit 0x40000000 into the partner record +0x370 word if clear\n",
-				ca_env);
-
-	// P009 EXPERIMENT (branch patch/qual-trace): arm the read-only
-	// qualification event tap from the environment, same gate idiom as the
-	// others and independent of all patch gates.  The C139 device reads the
-	// same variable in its own device_start() for the per-frame
-	// fingerprints.  Sampled per-vblank in vblank().  Experiment branch
-	// only - never merge to milestone.
-	char const *const qual_env = std::getenv("NAMCOS23_TRACE_QUAL");
-	m_trace_qual = qual_env && qual_env[0] != '\0'
-			&& !(qual_env[0] == '0' && qual_env[1] == '\0');
-	m_qt_have_prev = false;
-	m_qt_prev_drift = 0;
-	m_qt_prev_succ = 0;
-	m_qt_prev_rseq = 0;
-	m_qt_prev_head = 0;
-	m_qt_prev_tail = 0;
-	m_qt_win_quals = 0;
-	m_qt_win_chkfails = 0;
-	m_qt_win_enq = 0;
-	m_qt_win_drain = 0;
-	if (m_trace_qual)
-		logerror("QUAL_TRACE: tap armed (NAMCOS23_TRACE_QUAL=%s) - per-vblank qual (rseq 0x802F3510 change / drift 0x802F3504 reset) + chkfail (gp+0x75C8) events, ring head/tail flow, 1/s status\n",
-				qual_env);
-
-	// P015 EXPERIMENT (branch patch/render-gate-actor-spawn-trace): arm the
-	// READ-ONLY adoption / render-gate / cutscene-timer tap from the
-	// environment, same gate idiom as the others and independent of all patch
-	// gates.  The C139 device reads the same variable in its own device_start()
-	// for the per-delivered-frame ADOPT: ingest line.  Sampled per-vblank in
-	// vblank().  Experiment branch only - never merge to milestone.
-	char const *const adopt_env = std::getenv("NAMCOS23_TRACE_ADOPT");
-	m_trace_adopt = adopt_env && adopt_env[0] != '\0'
-			&& !(adopt_env[0] == '0' && adopt_env[1] == '\0');
-	m_adopt_have_prev = false;
-	m_adopt_prev_rec0 = 0;
-	m_adopt_prev_rec1 = 0;
-	m_adopt_prev_t7054 = 0;
-	m_adopt_prev_t7074 = 0;
-	m_adopt_prev_a0_active = 0;
-	m_adopt_prev_word01c6 = 0;
-	m_adopt_max_t7054 = 0;
-	m_adopt_t7054_advances = 0;
-	m_adopt_p_pos_changes = 0;
-	m_adopt_actor_changes = 0;
-	m_adopt_word01c6_changes = 0;
-	if (m_trace_adopt)
-		logerror("ADOPT: tap armed (NAMCOS23_TRACE_ADOPT=%s) - READ-ONLY per-vblank render-gate (bit 0x2000 + 0x0080d0 low-24 on rec0=0x802F43D0/rec1=0x802F4844) + cutscene-timer (gp+0x7054=0x802CE874, gp+0x7074==2=0x802CE894, op-70 gate 0x80016E58/64/80) + actor-spawn slot0 (0x802F4E1C active / 0x802F4FA4 coord0) + link-RAM 0x01c6 (m_ram word 0x11c6, peek) ingest-landing trace; bit-0x2000 arm site = op-55 RX -> 0x80013D44 (sw 0x80013E10); event lines on change + 1/s ADOPT: status; pair with device ADOPT: ingest by t=\n",
-				adopt_env);
-
-	// P016 PHASE A EXPERIMENT (branch patch/op70-cutscene-timer-arm): arm the
-	// READ-ONLY op-70 cutscene-timer accept/reject tap from the environment, same
-	// gate idiom as the others and independent of all patch gates.  The C139
-	// device reads the same env var in its own device_start() for the device-side
-	// OP70: rx arrival line.  Sampled per-vblank in vblank().  Experiment branch
-	// only - never merge to milestone.
-	char const *const op70_env = std::getenv("NAMCOS23_TRACE_OP70");
-	m_trace_op70 = op70_env && op70_env[0] != '\0'
-			&& !(op70_env[0] == '0' && op70_env[1] == '\0');
-	m_op70_have_prev = false;
-	m_op70_prev_t7054 = 0;
-	m_op70_t7054_changes = 0;
-	m_op70_gate_local2000_set = 0;
-	m_op70_gate_7074eq2 = 0;
-	if (m_trace_op70)
-		logerror("OP70: tap armed (NAMCOS23_TRACE_OP70=%s) - READ-ONLY per-vblank op-70 cutscene-timer accept/reject proof: gp+0x7054=0x802CE874 change watch (accept = ROM store 0x80016E80 fired) + the TWO gate operands the ROM tests (LOCAL +0x370 bit 0x2000 at 0x80016E50/E58 = 0x802F43D0+localidx*0x474; gp+0x7074==2 at 0x802CE894/0x80016E64, needs partner +0x370 & 0x6000); event lines on gp+0x7054 change + 1/s OP70: status; pair with device OP70: rx (arrival + peer value) by t=\n",
-				op70_env);
-
-	// P019 STEP 1 EXPERIMENT (branch patch/op70-linked-gate-arm, off
-	// patch/op70-real-detector): arm the READ-ONLY linkbits trace from the
-	// environment, same gate idiom as the others and independent of all patch
-	// gates.  The C139 device reads the SAME env var in its own device_start()
-	// for the device-side op55 wire-flag tap (LINKBITS: txflags / rxflags).
-	// Sampled per-vblank in vblank().  Experiment branch only - never merge.
-	char const *const linkbits_env = std::getenv("NAMCOS23_TRACE_LINKBITS");
-	m_trace_linkbits = linkbits_env && linkbits_env[0] != '\0'
-			&& !(linkbits_env[0] == '0' && linkbits_env[1] == '\0');
-	m_lb_have_prev = false;
-	m_lb_prev_local = 0;
-	m_lb_prev_partner = 0;
-	m_lb_prev_t7074 = 0;
-	m_lb_prev_t705c = 0;
-	m_lb_local6000_set = 0;
-	m_lb_partner6000_set = 0;
-	if (m_trace_linkbits)
-		logerror("LINKBITS: tap armed (NAMCOS23_TRACE_LINKBITS=%s) - READ-ONLY per-vblank 0x6000 fully-linked-handshake trace: LOCAL rec +0x370 (0x802F43D0+localidx*0x474) 0x6000 set sites bit0x4000@0x80016DBC(gate gp+0x705C==0=0x802CE87C) bit0x2000@0x800166B0; PARTNER rec +0x370 (0x802F43D0+(1-localidx)*0x474) written by op55 RX 0x80013E10 from 24-bit wire flags; GATE gp+0x7074==2@0x802CE894 iff partner 0x6000 both (0x80016BB4-BCC); event lines on each bit edge + gp+0x7074/0x705C change + 1/s LINKBITS: status (local6000/partner6000/t7074/wouldbe); pair with device LINKBITS: txflags/rxflags (op55 wire 0x6000) by t= -> local6000=0 (X), tx-no-6000 (Y), rx-6000+partner6000=0 (Z)\n",
-				linkbits_env);
-
-	// P025 EXPERIMENT (branch patch/playclock-humangate-trace, off
-	// patch/op55-carrier-repeat): arm the READ-ONLY play-clock + human-gate
-	// trace from the environment, same gate idiom as the others and independent
-	// of all patch gates.  The C139 device reads the SAME env var in its own
-	// device_start() for the op6F cell-walk (PLAYCLOCK: op6f-tx / op6f-rx).
-	// Sampled per-vblank in vblank().  See the member-block comment for the full
-	// ROM provenance.  Experiment branch only - never merge to milestone.
-	char const *const playclock_env = std::getenv("NAMCOS23_TRACE_PLAYCLOCK");
-	m_trace_playclock = playclock_env && playclock_env[0] != '\0'
-			&& !(playclock_env[0] == '0' && playclock_env[1] == '\0');
-	m_pc_have_prev = false;
-	m_pc_prev_rec0_390 = 0;
-	m_pc_prev_rec0_394 = 0;
-	m_pc_prev_rec1_390 = 0;
-	m_pc_prev_rec1_394 = 0;
-	m_pc_prev_rec0_flags = 0;
-	m_pc_prev_rec1_flags = 0;
-	m_pc_prev_role3ffc = 0;
-	m_pc_prev_rec0_ticking = false;
-	m_pc_ticks390 = 0;
-	m_pc_bit04_both = 0;
-	m_pc_prev_op6f_tx = 0;
-	m_pc_prev_op6f_rx = 0;
-	if (m_trace_playclock)
-		logerror("PLAYCLOCK: tap armed (NAMCOS23_TRACE_PLAYCLOCK=%s) - READ-ONLY per-vblank trace of (1) the op6F PLAY-CLOCK pair rec0 +0x390/+0x394 (0x802F43F0/F4; tick +1/frame @0x80014D3C-78 clamp 0x57E3F, gates gp+0x7570==0(0x802CED90)+bit29 clear; seeded -1 @0x80013E30; slave-ADOPTED from the wire @0x800B2504-08 when role byte 0x802F3FFC bit7 CLEAR; master EMITS @0x800B22CC once per 256 frames when bit7 SET + keepalive>0, sole caller 0x800B27CC) + rec1 +0x390/394 (0x802F4864/68, expected static) AND (2) the bit-0x0004 co-op/human gate on BOTH records' +0x370 (consumer 0x800136C4-D8 -> script-entity (6,1,0x1C); paired set/clear = script opcode 0x800BE200 operand!=0/==0; other clears: re-init 0x80013D44, helper 0x80013C54, op02 low24 mirror 0x800AB438); edge lines on bit04/role3ffc/clock-jump/rec1-clock/tick-run + 1/s PLAYCLOCK: status (clocks, ticks/60, bit04 both recs, role3ffc/op6fmaster, gate3502, ka, pause7570, framephase, op6f tx/rx counts); pair with device PLAYCLOCK: op6f-tx/rx by t=\n",
-				playclock_env);
-
-	// P026 PART 2 EXPERIMENT (branch patch/reasm-chunk-passthru): arm the
-	// READ-ONLY phase9-validator trace from the environment, same gate idiom as
-	// the others and independent of all patch gates.  Driver-only (the words it
-	// watches are all MIPS main RAM); sampled per-vblank in vblank().
-	// Experiment branch only - never merge to milestone.
-	char const *const p9v_env = std::getenv("NAMCOS23_TRACE_PHASE9VAL");
-	m_trace_phase9val = p9v_env && p9v_env[0] != '\0'
-			&& !(p9v_env[0] == '0' && p9v_env[1] == '\0');
-	m_p9v_have_prev = false;
-	m_p9v_prev_link = 0;
-	m_p9v_prev_chkfail = 0;
-	m_p9v_prev_buf0 = 0;
-	m_p9v_prev_buf1 = 0;
-	m_p9v_win_drains = 0;
-	m_p9v_win_chkfails = 0;
-	if (m_trace_phase9val)
-		logerror("PHASE9VAL: tap armed (NAMCOS23_TRACE_PHASE9VAL=%s) - READ-ONLY validator-layer trace; STEP-1 STATIC (full.txt): gp+0x75C8=0x802CEDE8 is a CHECKSUM-FAIL counter (sole increment 0x8000C004-0C, reached only when the drained slot's byte-sum!=0: compare andi 0x00ff @0x8000BFF8 + beqzl @0x8000BFFC jumps around it to jal 0x8000B8F0 on sum==0; zeroed only by link reset 0x8000C390; NO success counter exists - succ=0000 all run = ZERO chkfails, the phase-9d 'succ' label was wrong) and gp+0x75BC=0x802CEDDC is a TRI-STATE last-outcome word (0=validated @0x8000C064, 1=chkfail @0x8000C010, 2=timeout @0x8000C050/0x8000BB44 when drift 0x802F3504>=0x11, also clearing freshness 0x802F3502); events: 75BC/75C8 transitions + dispatch-buffer 0x802F3510 head change (= a drain; the validator's INPUT bytes, written pre-sum-test so failed drains show) + 1/s status; pair with CHUNK_PASSTHRU/KEEPALIVE_FLOOR/PLAYCLOCK by t=\n",
-				p9v_env);
-
-	// P033 EXPERIMENT (branch patch/compose-gate-trace, off patch/announce-latch):
-	// arm the READ-ONLY bulk-compose-scheduler gate trace from the environment,
-	// same gate idiom as the others and independent of all patch gates.
-	// Driver-only (every watched word is MIPS main RAM); sampled per-vblank in
-	// vblank().  Experiment branch only - never merge to milestone.
-	char const *const cg_env = std::getenv("NAMCOS23_TRACE_COMPOSEGATE");
-	m_trace_composegate = cg_env && cg_env[0] != '\0'
-			&& !(cg_env[0] == '0' && cg_env[1] == '\0');
-	m_cg_have_prev = false;
-	m_cg_prev_rec0_370 = 0;
-	m_cg_prev_rec1_370 = 0;
-	m_cg_prev_screen = 0;
-	m_cg_prev_phase = 0;
-	m_cg_prev_done = 0;
-	m_cg_prev_reqid = -1;
-	m_cg_prev_len = 0;
-	m_cg_prev_mode = 0;
-	m_cg_prev_ka = 0;
-	m_cg_prev_role = 0;
-	m_cg_prev_bypass = 0;
-	m_cg_win_bulkframes = 0;
-	m_cg_win_reqframes = 0;
-	m_cg_win_phase1 = 0;
-	m_cg_win_maxlen = 0;
-	if (m_trace_composegate)
-		logerror("COMPOSEGATE: tap armed (NAMCOS23_TRACE_COMPOSEGATE=%s) - READ-ONLY bulk-compose scheduler gate trace; STEP-1 STATIC (full.txt, gp=0x802C7820): sole op4B/4C bulk-snapshot emitter 0x800AF84C, sole caller 0x800150D8 in phase-1 handler 0x80014F3C of the link phase machine (jalr 0x8022A750[gp+0x7024=0x802CE844]), run per-frame by the boundary TRANSFER SCREENS gp+0x756C=0x802CED8C: 0x13(0x8001541C)->0x14(0x80015550, phase machine ALWAYS) pre-armed @0x80016CC0 by round machine 0x80016B3C, or 0x15(0x800155EC)->0x16(0x80015710, phase machine IFF bypass gp+0x7036=0x802CE856==0 @0x80015718; armer 0x80015B80: in-game a0=0 @0x80012F5C, menu a0=1 @0x800238E4); phase 0 0x80014E50 holds on role 0x802F3FFC bit5 + countdown gp+0x7028=0x802CE848, ABORTS (mode<-1, ka<-0, done gp+0x7014=0x802CE834<-1) iff mode 0x802F3FD0!=2 @0x80014EA8 or keepalive 0x802F3FD8==0 @0x80014EB4 [cand (a)]; phase 1 serves peer op-0x1A requests gp+0x7020=0x802CE840 (latch 0x800151D0; requests emitted by peer 0x800B27A8 @0x800B289C for entities with 0x802F4DC8 word0 bit31 [cand (c)]), teardown @0x8001511C on watchdog gp+0x7018=0x802CE838<0 or idle gp+0x701C=0x802CE83C>=0x20 ending EVERY transfer with ka=0/mode=1 [cand (a)/(b)]; composed frame length 0x802F3910 (finalize 0x800AA76C, gate byte 0x802F3D12), >0xFF = bulk class (device expected_hw = len + L2 overhead); boundary marker = rec0/rec1 +0x370 low bits 0x40/0x20 (segment-phase machine 0x800131E8/0x80013214/0x8001324C [cand (b)]); events: COMPOSEGATE: boundary/phase/request/bulkframe/session + 1/s COMPOSEGATE: status; pair with device announce-latch/CHUNK_PASSTHRU + PLAYCLOCK/LINKBITS by t=\n",
-				cg_env);
-
-	// P034 EXPERIMENT (branch patch/roundend-trace, off patch/compose-gate-trace):
-	// arm the READ-ONLY round-end trigger / join-precondition trace from the
-	// environment, same gate idiom as the others and independent of all patch
-	// gates.  Driver-only (every watched word is MIPS main RAM); sampled
-	// per-vblank in vblank().  Experiment branch only - never merge to milestone.
-	char const *const re_env = std::getenv("NAMCOS23_TRACE_ROUNDEND");
-	m_trace_roundend = re_env && re_env[0] != '\0'
-			&& !(re_env[0] == '0' && re_env[1] == '\0');
-	m_re_have_prev = false;
-	for (int i = 0; i < 2; i++)
-	{
-		m_re_prev_p370[i] = 0;
-		m_re_prev_5c[i] = 0;
-		m_re_prev_37a[i] = 0;
-		m_re_prev_3a0[i] = 0;
-		m_re_prev_3a2[i] = 0;
-		m_re_prev_394[i] = 0;
-	}
-	m_re_prev_703c = 0;
-	m_re_prev_7040 = 0;
-	m_re_prev_705c = 0;
-	m_re_prev_7074 = 0;
-	m_re_prev_7034 = 0;
-	m_re_prev_7624 = 0;
-	m_re_prev_role = 0;
-	m_re_prev_7608 = 0;
-	m_re_prev_75f8 = 0;
-	m_re_prev_6ff4 = 0;
-	m_re_prev_coop = 0;
-	m_re_prev_74f0lo = 0xff;
-	if (m_trace_roundend)
-		logerror("ROUNDEND: tap armed (NAMCOS23_TRACE_ROUNDEND=%s) - READ-ONLY round-end trigger trace; STEP-1 STATIC (full.txt, gp=0x802C7820): round703c 0->1 writer = 0x80017074 in state-0 handler 0x80017024 (table 0x8022A78C [0..5] = 0x80017024/0x800166D4/0x8001685C/0x80016938/0x80017090/0x800170BC), UNCONDITIONAL once the round machine 0x80016B3C runs - and that runs (sole caller 0x80013530 in dispatcher 0x800134A0) ONLY while LOCAL record +0x370 bit 0x2000 is set (LOCAL = 0x802F4060 + gp+0x7608*0x474; gp+0x7608 stays 0 on BOTH cabs - writers are sw $0 x6 + menu toggle 0x8002A6B8 - so only RECORD 0 can trigger); sole 0x2000 setter 0x800166B0-BC (fn 0x80016698, also 703C/7040/7044<-0), gate @0x800166AC bit31==(idx!=0); sole caller = ROUND-END CHECKER 0x80026E00 @0x80026EC4, gates A +0x370&0x40010800==0 @0x80026E20, B +0x5C bit0 @0x80026E30 (spawn-template flag), C one-shot +0x37A bit0 clear @0x80026E40 (SET @0x80026E48 on first passing call - gate-E failure BURNS it until 0x80014928 clears), D bit31/idx @0x80026E60, E +0x3A0 pre-dec <= 0 @0x80026EB8 (init byte gp+0x75E4; =1 fire-now wrapper 0x800D1668); callers = script triggers 0x800D5AC4/0x800DF324 (positional) + 0x800793CC/0x8007943C/0x80079ABC/0x80079BE8/0x800E9F34/0x800E9FC4 (0x40-marker-gated) + WATCHDOG 0x80014BA8 (@0x80014D8C per frame unless 0x2000 set): +0x5C bit0 && gp+0x75F8 bit2 clear && +0x3A2--==0 (area TIME LIMIT, re-arm @0x80014DEC desc[9]*60 frames, default 0x960=40 s) && +0x37A bit1 clear; LOCAL 0x6000 = 0x2000(entry) + 0x4000 (tail 0x80016DB8-C0 when gp+0x705C==0; state-0 sets 705C=1 @0x80017044, state-1 clears @0x80016724 after 7068 > 0x46 = 71 frames); 7074=2 iff mode==2 && ka>0 && PARTNER +0x370&0x6000==0x6000 @0x80016B5C-BCC (derived only when the round machine runs); JOIN armer 0x80015B80 in-game path: 7034==0, role bit1 @0x80015BAC (NO writer ever sets bit1 - 6-store census - statically dead = G10), coop (rec0|rec1)&0x04, 7624!=0 gates the 0x15 arm; SEGMENT RE-BASE entry 0x80104958 (0x80104980 is mid-function), zeroes rec0+394/388 AND rec1+394/388 same frame (fingerprint), callers 0x80104B8C/0x80104C34 on object +0x18 bit27; op6F 0x800B22CC (sole site 0x800B27CC, unguarded): emit iff gp+0x74F3==0 (frame ctr low byte - 1/256 frames) && ka>0 && role bit7; events: ROUNDEND: round/mode2000/checker/flags5c/wd3a2/rebase/join/op6fwin/idx + 1/s ROUNDEND: status; pair with COMPOSEGATE/PLAYCLOCK/LINKBITS by t=\n",
-				re_env);
-
-	// P036 EXPERIMENT (branch patch/round-arm, off patch/latch-v2-snapshot):
-	// arm the ROUND-ARM assist from the environment, same gate idiom as the
-	// others and independent of all trace/patch gates.  Driver-only; applied
-	// per-vblank in vblank() AFTER the P034 ROUNDEND tap so a stacked-trace
-	// run samples the pristine pre-write state first.  Experiment branch only
-	// - never merge to milestone.
-	char const *const ra_env = std::getenv("NAMCOS23_PATCH_ROUNDARM");
-	m_patch_roundarm = ra_env && ra_env[0] != '\0'
-			&& !(ra_env[0] == '0' && ra_env[1] == '\0');
-	m_ra_prev_p370 = 0;
-	m_ra_prev_own_sig = false;
-	m_ra_prev_703c = 0;
-	m_ra_armed = false;
-	m_ra_armed_frame = 0;
-	m_ra_wait_reentry = false;
-	m_ra_gap_frames = 0;
-	m_ra_fire_pending = false;
-	m_ra_fire_frame = 0;
-	m_ra_cnt_armed = 0;
-	m_ra_cnt_fired = 0;
-	m_ra_cnt_entered = 0;
-	m_ra_cnt_skipped = 0;
-	m_ra_cnt_overwritten = 0;
-	if (m_patch_roundarm)
-		logerror("ROUNDARM: patch armed (NAMCOS23_PATCH_ROUNDARM=%s) - round-arm assist, the FIRST functional game-RAM write beyond the P001 keepalive floor: ONE halfword rec0+0x3A0 (hi lane of 0x802F4400; +0x3A2 watchdog lo lane preserved bit-exactly) <- 1 = the ROM's own fire-now idiom (wrapper 0x800D1668 @0x800D16A8) planted at the score/result window EXIT so the next NATURAL checker call 0x80026E00 pre-decrements 1->0, passes gate E and enters round-end through 100%% stock paths (0x800166B0 entry -> round machine walk -> 0x6000 advertise @71 frames -> mutual 7074==2 -> transfer screens -> op4B/4C serves -> segment re-base); window signature = OWN rec0+0x370 (0x802F43D0)&0xC48168E0==0x04010040 (bit26 result-class + bit16 + 0x40 marker set; mirror-marks/bit23-strobe/0x6000/0x800/0x80-trigger/0x20-engaged clear) AND MIRROR rec1+0x370 (0x802F4844)&0x048168E0==0x04010040 (partner at result too - an own-only mask provably cannot separate blue score 06118052 from blue walking 06018042, its strict subset) while mode 0x802F3FD0==2 && ka 0x802F3FD8>0 && idx gp+0x7608==0; FIRE on the rec0 bit16-clear edge iff round703c 0x802CE85C==0 && mode==2 && ka>0 && oneshot rec0+0x37A==0000 && post-edge (p370&0xC0006800)==0 && cnt3a0 in [2,15] (==1 natural no-write, <=0 checker-firing, >15 insane); RAILS: one-shot per window (re-arm only after full-signature re-entry with >=60 absent frames), 300-frame edge-timeout disarm, NON-RETRY on overwrite (cnt3a0>1 while round703c==0 after a fire = logged once, never rewritten), no other address ever written; events ROUNDARM: armed/fired/skipped/disarmed/entered/overwritten + 1/s ROUNDARM: status while mode==2; pair with ROUNDEND:/COMPOSEGATE:/LINKBITS: by t=\n",
-				ra_env);
-
-	// P020 EXPERIMENT (branch patch/linked-gate-supply, off
-	// patch/op70-linked-gate-arm): arm the FORCING 0x6000 supply from the
-	// environment, same gate idiom as the others and independent of all patch
-	// gates.  Applied per-vblank in vblank() (BEFORE the LINKBITS trace block).
-	// Experiment branch only - never merge to milestone.
-	char const *const linked_gate_env = std::getenv("NAMCOS23_PATCH_LINKED_GATE");
-	m_patch_linked_gate = linked_gate_env && linked_gate_env[0] != '\0'
-			&& !(linked_gate_env[0] == '0' && linked_gate_env[1] == '\0');
-	m_lg_set_count = 0;
-	if (m_patch_linked_gate)
-		logerror("LINKED_GATE: armed (NAMCOS23_PATCH_LINKED_GATE=%s) - every vblank while mode word 0x802F3FD0 == 2, OR 0x6000 into the LOCAL record +0x370 word (0x802F43D0+localidx*0x474, localidx=gp+0x7608=0x802CEE28); SUPPLY only (no gp+0x7074/partner/op-70 write) so the ROM op55 builder carries it to the peer -> peer partner6000=1 -> gp+0x7074=2 -> op-70; OR-only, mode-2-bounded\n",
-				linked_gate_env);
-
-	// P021 EXPERIMENT (branch patch/linked-gate-tx-only, off
-	// patch/linked-gate-supply): arm the WIRE-ONLY 0x6000 advertise from the
-	// environment.  INDEPENDENT of NAMCOS23_PATCH_LINKED_GATE (run TXONLY set +
-	// LINKED_GATE unset).  Same "non-empty and not literal 0" gate idiom.  The
-	// driver pushes (armed && staging_mode==2) to the device each vblank; the
-	// device does the OR-only op55 wire-flag injection in emit_tx_frame.  No RAM
-	// write here - the LOCAL +0x370 record is left untouched (the P021 invariant).
-	// Experiment branch only - never merge to milestone.
-	char const *const linked_gate_txonly_env = std::getenv("NAMCOS23_PATCH_LINKED_GATE_TXONLY");
-	m_patch_linked_gate_txonly = linked_gate_txonly_env && linked_gate_txonly_env[0] != '\0'
-			&& !(linked_gate_txonly_env[0] == '0' && linked_gate_txonly_env[1] == '\0');
-	if (m_patch_linked_gate_txonly)
-		logerror("LINKED_GATE_TXONLY: armed (NAMCOS23_PATCH_LINKED_GATE_TXONLY=%s) - every vblank while mode word 0x802F3FD0 == 2, the device ORs 0x6000 into the op55 24-bit WIRE flags (cells[op55+6] |= 0x60) IN THE OUTGOING FRAME COPY (NOT game RAM); the peer's op55 RX 0x800B058C lands it into ITS partner record +0x370 (0x80013E10) -> peer partner6000=1 -> gate7074 1->2, while this cab's LOCAL game RAM +0x370 (0x802F43D0) is NEVER modified (gun-actor 0x80013644 stays human, no death derail). INDEPENDENT of NAMCOS23_PATCH_LINKED_GATE. Pair LINKED_GATE_TXONLY: inject/status with device LINKBITS: txflags has6000\n",
-				linked_gate_txonly_env);
-
-	// P024 EXPERIMENT (branch patch/op55-carrier-repeat, off
-	// patch/linked-gate-tx-only): arm the PARTNER-RECORD STICKY LATCH from the
-	// environment.  STACKS on top of (and is INDEPENDENT of) the P021 TXONLY wire
-	// advertise, which stays armed.  Same "non-empty and not literal 0" gate idiom.
-	// P021 proved the wire advertise lands in the partner record but only ~1/scene;
-	// this makes it PERSIST by re-OR-ing 0x6000 into the PARTNER record +0x370 every
-	// mode-2 vblank.  Pre-step (gold disasm) proved partner 0x2000 is SAFE (the gun-
-	// actor 0x80013644 / tick 0x80014CC0 / dispatcher 0x800134A0 read 0x2000 on the
-	// LOCAL record only), so this writes ONLY the partner record - the LOCAL record
-	// (and thus the local gun) is NEVER touched.  Experiment branch only.
-	char const *const op55_repeat_env = std::getenv("NAMCOS23_PATCH_OP55_REPEAT");
-	m_patch_op55_repeat = op55_repeat_env && op55_repeat_env[0] != '\0'
-			&& !(op55_repeat_env[0] == '0' && op55_repeat_env[1] == '\0');
-	m_or_partner6000_count = 0;
-	if (m_patch_op55_repeat)
-		logerror("OP55_REPEAT: armed (NAMCOS23_PATCH_OP55_REPEAT=%s) - every vblank while mode word 0x802F3FD0 == 2, OR 0x6000 into the PARTNER record +0x370 word (0x802F43D0+(1-localidx)*0x474, localidx=gp+0x7608=0x802CEE28) so the gate 0x80016BB4-BCC sees PERSISTENT partner 0x6000 -> gp+0x7074 latches 1->2 and the b26 partner render STAYS drawn. PARTNER record only: the LOCAL record (0x802F43D0+localidx*0x474) is NEVER written (gun-actor 0x80013644 stays human, no death derail; partner-0x2000 is the ROM-intended remote-networked state per op55 RX 0x80013E10). OR-only, mode-2-bounded, idempotent. STACKS on NAMCOS23_PATCH_LINKED_GATE_TXONLY. Pair OP55_REPEAT: latch/status with LINKBITS: status partner6000/gate7074 + OP70: status\n",
-				op55_repeat_env);
-
-	// P040 EXPERIMENT (branch patch/op6f-394-clamp, off patch/latch-v3-dedupe):
-	// arm the op6F SEGMENT-CLOCK ADOPTION STORE FILTER from the environment.
-	// Same "non-empty and not literal 0" gate idiom.  Full mechanism, PC
-	// reliability analysis and scope limits live in the member-block comment;
-	// the DRC resolution (set_force_no_drc) lives in timecrs2(machine_config&)
-	// because mips3 latches m_isdrc in device_start(), before this runs.
-	// NOTE on the phase-9d comment below: "add_fastram bypasses
-	// install_write_tap" holds for the base-class TLB mips3 cores, whose
-	// accessors translate to PHYSICAL and consult m_fastram first - but the
-	// R4650 used here OVERRIDES the interpreter accessors (mips3.cpp 1541-1711)
-	// and in kernel mode passes the raw virtual address straight to the
-	// program space (never touching fastram), and the r4650 DRC accessor's
-	// fastram compare runs on the raw kseg0 VIRTUAL address (0x802Fxxxx),
-	// which can never match the PHYSICAL range (0, mainram.bytes()-1)
-	// registered above - so on THIS driver the tap fires under both cores.
-	char const *const op6f_no394_env = std::getenv("NAMCOS23_PATCH_OP6F_NO394");
-	m_patch_op6f_no394 = op6f_no394_env && op6f_no394_env[0] != '\0'
-			&& !(op6f_no394_env[0] == '0' && op6f_no394_env[1] == '\0');
-	m_no394_blocked = 0;
-	m_no394_blocked_win = 0;
-	m_no394_pass394 = 0;
-	m_no394_pass394_win = 0;
+	// P040/P040b falsifier state (the v1 store-filter env + write tap were
+	// removed in P072; the adopt-edge falsifier survives, armed by the
+	// ADOPTED NO394B gate below).
 	m_no394_adopt_edges = 0;
 	m_no394_have_prev = false;
 	m_no394_prev_394 = 0;
-	if (m_patch_op6f_no394)
-	{
-		// THE FILTER: write tap on the ONE word rec0+0x394.  Virtual
-		// 0x802F43F4 -> program-space 0x002F43F4 (map.global_mask(0xfffffff)
-		// strips the kseg bits at dispatch).  The tap edits only the in-flight
-		// data (never writes memory -> no recursion), passes debugger pokes
-		// untouched, and stays installed across soft reset / save-state load.
-		m_op6f_no394_tap = m_maincpu->space(AS_PROGRAM).install_write_tap(
-				0x002f43f4, 0x002f43f7, "op6f_no394",
-				[this](offs_t offset, u32 &data, u32 mem_mask)
-				{
-					if (machine().side_effects_disabled())
-						return;
-					// On this core pc() and pcbase() BOTH read m_core->pc
-					// (MIPS3_PC == STATE_GENPC and STATE_GENPCBASE both map
-					// there; m_ppc is not exported), and the interpreter
-					// advances it BEFORE executing the op - so at store
-					// time it reads store-PC+4 = 0x800B250C (the sw is not
-					// in a delay slot).  Compare against the containing-
-					// function range of the adoption receiver 0x800B2448
-					// (task-specified upper bound 0x800B2520; the body
-					// actually ends @0x800B2510 jr+slot - the two extra
-					// instructions belong to the next function and never
-					// store to this word), which absorbs the +4 offset.
-					u32 const curpc = u32(m_maincpu->pc());
-					if (curpc >= 0x800b2448 && curpc <= 0x800b2520)
-					{
-						u32 const cur394 = m_mainram[0x002f43f4 / 4];
-						u32 const cur390 = m_mainram[0x002f43f0 / 4];
-						u32 const wouldbe = data;
-						data = cur394; // store lands but changes nothing = DROPPED
-						++m_no394_blocked;
-						++m_no394_blocked_win;
-						logerror("OP6F_NO394: blocked t=%.6f wouldbe=%08x cur394=%08x cur390=%08x pc=%08x mask=%08x total=%u (op6F 394-adoption sw@0x800B2508 dropped, expect pc=0x800B250C; +0x390 adoption NOT touched)\n",
-								machine().time().as_double(), wouldbe, cur394, cur390,
-								curpc, mem_mask, m_no394_blocked);
-					}
-					else
-					{
-						// tick +1 (0x80014D64/78) / re-base 0 (0x80104980) /
-						// init -1 (0x80013E34) / Handler-A restore
-						// (0x801046A0) / session-sync ingest (0x800B08F4):
-						// pass untouched, count for the 1/s status line.
-						++m_no394_pass394;
-						++m_no394_pass394_win;
-					}
-				});
-		logerror("OP6F_NO394: filter armed (NAMCOS23_PATCH_OP6F_NO394=%s) - write tap on rec0+0x394 segment clock (virtual 0x802F43F4 = program-space 0x002F43F4, 32-bit word 0x002F43F4-F7); DROP stores whose pc lies in [0x800B2448,0x800B2520] = the op6F clock-adoption receiver (sole 394 store = sw $a2,0x394($v0) word 0xAC460394 @0x800B2508; expect observed pc=0x800B250C = store-PC+4, interpreter pre-advances and GENPC==GENPCBASE==m_core->pc on mips3); all other +0x394 writers pass; +0x390 adoption @0x800B2504 untapped (benign, P039-verified consumers); MAIN CPU FORCED TO INTERPRETER at config time (set_force_no_drc - DRC pc is block-stale and would fail open); slave-only mechanism (master's bnez @0x800B24D0 skips the stores) -> expected blocked: master 0, slave >=1 per DELIVERED op6F (incl. former equal-pair no-op adoptions invisible to the jump census - the count doubles as the true delivery-rate instrument P039 lacked; the P038 run showed 2 by-effect); falsifier: OP6F_NO394 adopt-edge lines MUST stay 0; tap-aliveness rail: status pass394 ticks ~+60/s in-game (the per-frame tick writer 0x80014D64/78) - +0 while in-game = tap dead = filter fail-open\n",
-				op6f_no394_env);
-	}
 
-	// P040b EXPERIMENT (same branch - MECHANISM AMENDMENT of P040): arm the
+	// P040b (same branch - MECHANISM AMENDMENT of P040): arm the
 	// verify-before-poke RAM-code NOP from the environment.  Same "non-empty
 	// and not literal 0" gate idiom.  The poke itself is DEFERRED to vblank:
 	// at machine_start the boot loader has not yet copied the main program
 	// into RAM, so the target word still reads 0.  NO set_force_no_drc and
-	// NO write tap - the whole point of the amendment is full DRC speed (the
-	// v1 filter env above stays functional and independent; arming both is
-	// harmless but redundant).  Full mechanism + the verified DRC
+	// NO write tap - the whole point of the amendment is full DRC speed.
+	// Full mechanism + the verified DRC
 	// invalidation analysis live in the member-block comment.
 	// P067 (patch/defaults-on): ADOPTED - armed by DEFAULT;
 	// NAMCOS23_PATCH_OP6F_NO394B=0 is the kill switch (fully inert, no poke
@@ -11685,10 +7951,10 @@ void namcos23_state::machine_start()
 	if (!m_patch_op6f_no394b)
 		logerror("OP6F_NO394B: DISABLED (NAMCOS23_PATCH_OP6F_NO394B=0 kill switch - adopted default overridden; stock +0x394 adoption, no poke)\n");
 	if (m_patch_op6f_no394b)
-		logerror("OP6F_NO394B: armed (NAMCOS23_PATCH_OP6F_NO394B=%s %s) - verify-before-poke RAM-code NOP, FULL-SPEED DRC (no forced interpreter, no write tap): each vblank until applied, read u32 @0x800B2508 (program-space 0x000b2508 under global_mask; System 23 executes the main program from RAM - the boot loader copies it in early boot, the word reads 0 until then); on 0xAC460394 (sw $a2,0x394($v0) - the sole +0x394 store of the op6F adoption receiver 0x800B2448) poke 0x00000000 = MIPS NOP, one-shot; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard, stay inert); +0x390 adoption @0x800B2504 untouched. DRC soundness (verified in mips3drc.cpp, see member comment): the receiver's block first executes at link-up ~56 s+ and is compiled lazily from the then-already-NOPed RAM; mips3 has NO store-triggered invalidation and default loose verify checks only sequence-head words, so the guards are the 1/s word re-check (re-poke + repokes counter, expect 0) and the shared adopt-edge falsifier (MUST stay 0). Expect: poked banner x1 in early boot; status word2508=00000000 thereafter; blocked/pass394 stay 0 under NO394B-only (no tap - word2508 is the aliveness rail); full ~60 fps\n",
+		logerror("OP6F_NO394B: armed (NAMCOS23_PATCH_OP6F_NO394B=%s %s) - verify-before-poke RAM-code NOP, FULL-SPEED DRC (no forced interpreter, no write tap): each vblank until applied, read u32 @0x800B2508 (program-space 0x000b2508 under global_mask; System 23 executes the main program from RAM - the boot loader copies it in early boot, the word reads 0 until then); on 0xAC460394 (sw $a2,0x394($v0) - the sole +0x394 store of the op6F adoption receiver 0x800B2448) poke 0x00000000 = MIPS NOP, one-shot; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard, stay inert); +0x390 adoption @0x800B2504 untouched. DRC soundness (verified in mips3drc.cpp, see member comment): the receiver's block first executes at link-up ~56 s+ and is compiled lazily from the then-already-NOPed RAM; mips3 has NO store-triggered invalidation and default loose verify checks only sequence-head words, so the guards are the 1/s word re-check (re-poke + repokes counter, expect 0) and the adopt-edge falsifier (MUST stay 0). Expect: poked banner x1 in early boot; adopt-edge and re-poke lines stay silent; full ~60 fps\n",
 				op6f_no394b_val, patch_env_src(op6f_no394b_from_env, op6f_no394b_val).c_str());
 
-	// P041 EXPERIMENT (branch patch/op6f-390-clamp, off patch/op6f-394-clamp):
+	// P041 (branch patch/op6f-390-clamp, off patch/op6f-394-clamp):
 	// arm the +0x390 PLAY-CLOCK adoption NOP from the environment - the other
 	// half of the P040b pair (full rationale, the verified instruction word
 	// and the falsifier spec live in the member-block comment).  Same
@@ -11711,360 +7977,47 @@ void namcos23_state::machine_start()
 	if (!m_patch_op6f_no390b)
 		logerror("OP6F_NO390B: DISABLED (NAMCOS23_PATCH_OP6F_NO390B=0 kill switch - adopted default overridden; stock +0x390 adoption, no poke)\n");
 	if (m_patch_op6f_no390b)
-		logerror("OP6F_NO390B: armed (NAMCOS23_PATCH_OP6F_NO390B=%s %s) - verify-before-poke RAM-code NOP of the op6F +0x390 PLAY-CLOCK adoption store, FULL-SPEED DRC (no forced interpreter, no write tap): each vblank until terminal, read u32 @0x800B2504 (program-space 0x000b2504 under global_mask; the word reads 0 until the boot loader copies the program); on 0xAC470390 (sw $a3,0x390($v0) - the sole +0x390 store of the op6F adoption receiver 0x800B2448, VERIFIED in full.txt, one instruction before the P040b 394 store @0x800B2508) poke 0x00000000 = MIPS NOP, one-shot; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard, stay inert). Blocks the OTHER HALF of the P040b half-adoption pair-split (blue's 390-394 skew sawtooth -9..+1, six +3..+12 play-clock snaps + 11 grid tick-stops = the measured gameplay-jitter owner; red's pair never splits) - both halves NOPed restores LOCAL pair consistency for P039's consumers (total-time scoring, Handler-B draw, best-flags); accepted cost = bounded cross-cab play-clock skew (<1 s per 5 min from the slave's ingest-pause tick losses). Guards: 1/s word re-check (re-poke + repokes counter, expect 0) and the OP6F_NO390B 390-jump census falsifier (any positive in-game rec0_390 jump >2 MUST stay 0; the PLAYCLOCK clock-jump rec0_390 line is the independent cross-check). The 394 rails (adopt-edge falsifier + NO394B status) are UNTOUCHED. Expect: poked banner x1 early boot; status word2504=00000000 jump390s=0 thereafter; structurally inert on the master (its role gate bnez @0x800B24D0 skips both stores anyway)\n",
+		logerror("OP6F_NO390B: armed (NAMCOS23_PATCH_OP6F_NO390B=%s %s) - verify-before-poke RAM-code NOP of the op6F +0x390 PLAY-CLOCK adoption store, FULL-SPEED DRC (no forced interpreter, no write tap): each vblank until terminal, read u32 @0x800B2504 (program-space 0x000b2504 under global_mask; the word reads 0 until the boot loader copies the program); on 0xAC470390 (sw $a3,0x390($v0) - the sole +0x390 store of the op6F adoption receiver 0x800B2448, VERIFIED in full.txt, one instruction before the P040b 394 store @0x800B2508) poke 0x00000000 = MIPS NOP, one-shot; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard, stay inert). Blocks the OTHER HALF of the P040b half-adoption pair-split (blue's 390-394 skew sawtooth -9..+1, six +3..+12 play-clock snaps + 11 grid tick-stops = the measured gameplay-jitter owner; red's pair never splits) - both halves NOPed restores LOCAL pair consistency for P039's consumers (total-time scoring, Handler-B draw, best-flags); accepted cost = bounded cross-cab play-clock skew (<1 s per 5 min from the slave's ingest-pause tick losses). Guards: 1/s word re-check (re-poke + repokes counter, expect 0) and the OP6F_NO390B 390-jump census falsifier (any positive in-game rec0_390 jump >2 MUST stay 0). The 394 rails (adopt-edge falsifier + NO394B status) are UNTOUCHED. Expect: poked banner x1 early boot; 390-jump and re-poke lines stay silent; structurally inert on the master (its role gate bnez @0x800B24D0 skips both stores anyway)\n",
 				op6f_no390b_val, patch_env_src(op6f_no390b_from_env, op6f_no390b_val).c_str());
 
-	// P043 EXPERIMENT (branch patch/wave-init-hold, off patch/op6f-390-clamp):
-	// arm the WAVE-INIT HOLD poke pair from the environment - same "non-empty
-	// and not literal 0" gate idiom, independent of every env above.  Both
-	// pokes are DEFERRED to vblank (at machine_start the boot loader has not
-	// yet copied the program into RAM, so both words read 0).  Full race map,
-	// both VERIFIED instruction words and the fail-to-stock analysis live in
-	// the member-block comment.
-	char const *const waveinit_hold_env = std::getenv("NAMCOS23_PATCH_WAVEINIT_HOLD");
-	m_patch_waveinit_hold = waveinit_hold_env && waveinit_hold_env[0] != '\0'
-			&& !(waveinit_hold_env[0] == '0' && waveinit_hold_env[1] == '\0');
-	m_wih_win_poked = false;
-	m_wih_win_refused = false;
-	m_wih_win_repokes = 0;
-	m_wih_clamp_poked = false;
-	m_wih_clamp_refused = false;
-	m_wih_clamp_repokes = 0;
-	if (m_patch_waveinit_hold)
-		logerror("WAVEINIT_HOLD: armed (NAMCOS23_PATCH_WAVEINIT_HOLD=%s) - TWO verify-before-poke RAM-code word patches closing the P042 wave-init completion race (condition B of per-frame completion check 0x80014074: ring lookup 0x800B5690(rec+0x364) opened 10 frames BEFORE wave activation 0x800A0E5C = the measured 0.17 s skip margin). Each vblank until terminal, INDEPENDENT one-shots (a REFUSE on one does not block the other): (1) WINDOW @0x8001417C on 0x2842000B (slti $v0,$v0,0xB - VERIFIED in full.txt) poke 0x28420001 (slti $v0,$v0,1: walk-phase check held until end-cursor<1; fight areas activate at end-cursor==1 first, walk-only advance keeps its id==-1 path at end-cursor<=0, <=0.17 s later than stock); (2) CLAMP @0x800B56E0 on 0x2402FFFE (li $v0,-2 - VERIFIED in full.txt) poke 0x24020000 (li $v0,0: ring-lookup not-found verdict neutral - kills the beta/never-registered flavor incl. fight-phase boss/stage-2 instant-resolves; sole caller of 0x800B5690 = condition B @0x8001418C); on any OTHER nonzero word REFUSE that poke one-shot (ROM-revision guard). DRC soundness by P040b ordering (pokes land ~frame 11, the check first executes at attract gameplay); residual re-copy windows FAIL TO STOCK only - guards: 1/s combined re-check/re-poke + status with both word rails (expect word1417c=28420001 wordb56e0=24020000) + the NAMCOS23_TRACE_WAVEINIT flavor trace. Both cabs (the race is role-symmetric). Prediction: room-1 PLAYS in late-link-up sessions (0/7 on record), zero walk-window bit16, boss instant-resolves collapse; 40 s watchdog +0x3A2 still backstops legit-completion losses\n",
-				waveinit_hold_env);
 
-	// P043 trace: arm the READ-ONLY wave-anchor / ring observability trace
-	// from the environment - independent of the patch env (either works
-	// alone; the combined run arms both).  Driver-only (every watched word is
-	// MIPS main RAM); sampled per-vblank in vblank(), per-event lines only.
-	char const *const waveinit_trace_env = std::getenv("NAMCOS23_TRACE_WAVEINIT");
-	m_trace_waveinit = waveinit_trace_env && waveinit_trace_env[0] != '\0'
-			&& !(waveinit_trace_env[0] == '0' && waveinit_trace_env[1] == '\0');
-	m_wt_have_prev = false;
-	for (int i = 0; i < 2; i++)
-	{
-		m_wt_prev_p370[i] = 0;
-		m_wt_prev_5c[i] = 0;
-		m_wt_prev_endcur[i] = 0;
-		m_wt_engage_t[i] = -1.0;
-		m_wt_engage_anchor[i] = 0xffffffff;
-		m_wt_win11_t[i] = -1.0;
-		m_wt_win1_t[i] = -1.0;
-	}
-	if (m_trace_waveinit)
-		logerror("WAVEINIT: trace armed (NAMCOS23_TRACE_WAVEINIT=%s) - READ-ONLY wave-anchor/ring trace, per-event lines only: 'WAVEINIT: bit16' on every p370 bit16 0->1 edge (both records; dumps f5c word, timeline cursor/end/end-cursor, anchor id rec+0x364, big-map view rec+0x368, the full 4-slot ring 0x802D2030 (id:handle x4) + rotation cursor gp+0x73E0, an EMULATED 0x800B5690 lookup ((cursor+a1)&3, a1=3..0, first match -> lh handle; id==-1 -> -1; none -> -2) and the P042 poison-flavor verdict: hookA-conditionA (bit17 same store) / gamma-rearm (anchor changed since engage) / no-id-walkclass (-1) / beta-never-registered (-2) / alpha-released-handle (found, handle<0) / healthy-unexplained (MUST not appear)); 'WAVEINIT: engage-cycle' once per activation f5c bit0 rise (engage_t = p370 bit5 rise, win11_t = stock window entry end-cursor<11 in walk, win1_t = narrowed entry <1, act_t, anchor, bit16_now - bit16_now=1 = completion PRE-LATCHED in the walk = the skip signature, expect 0 with the pokes armed). Healthy choreography: engage -> win11 +0.35 -> activation +0.50\n",
-				waveinit_trace_env);
-
-	// P044 EXPERIMENT (branch patch/anchor-lifecycle, off patch/wave-init-hold):
-	// arm the three ANCHOR-LIFECYCLE gates from the environment - same
-	// "non-empty and not literal 0" idiom, each independent of every env above
-	// and of each other (any subset works; all inert unset).  Full design +
-	// the verified ring facts live in the member-block comment.  The device
-	// (namco_c139) reads NAMCOS23_TRACE_OP20 itself in device_start for the
-	// wire half (op-0x20/op-0x1F cell detection).
-	char const *const op20_trace_env = std::getenv("NAMCOS23_TRACE_OP20");
-	m_trace_op20 = op20_trace_env && op20_trace_env[0] != '\0'
-			&& !(op20_trace_env[0] == '0' && op20_trace_env[1] == '\0');
-	char const *const anchor_shield_env = std::getenv("NAMCOS23_PATCH_ANCHOR_SHIELD");
-	m_patch_anchor_shield = anchor_shield_env && anchor_shield_env[0] != '\0'
-			&& !(anchor_shield_env[0] == '0' && anchor_shield_env[1] == '\0');
+	// P044 (branch patch/anchor-lifecycle, off patch/wave-init-hold):
+	// arm the ANCHOR_RESURRECT dead-slot id scrub.  Full design + the verified
+	// ring facts live in the member-block comment.  (The retired shield gate -
+	// the P044-regression walk-phase repair - and the read-only OP20
+	// ring/wire-transaction trace were removed in P072.)
 	// P067 (patch/defaults-on): ANCHOR_RESURRECT ADOPTED - armed by DEFAULT;
 	// NAMCOS23_PATCH_ANCHOR_RESURRECT=0 is the kill switch (fully inert, no
-	// scrub ever - the pre-P067 unset path).  ANCHOR_SHIELD stays opt-in
-	// (retired).  The WAVEINIT_HOLD safety interlock below still applies to
-	// the default-armed state (a user arming the retired WAVEINIT_HOLD gets
-	// the loud REFUSE, resurrect disarmed).
+	// scrub ever - the pre-P067 unset path).
 	bool anchor_resurrect_from_env = false;
 	char const *const anchor_resurrect_val = patch_env_or_default("NAMCOS23_PATCH_ANCHOR_RESURRECT", "1", anchor_resurrect_from_env);
 	m_patch_anchor_resurrect = anchor_resurrect_val != nullptr;
 	if (!m_patch_anchor_resurrect)
 		logerror("ANCHOR_RESURRECT: DISABLED (NAMCOS23_PATCH_ANCHOR_RESURRECT=0 kill switch - adopted default overridden; born-dead ring slots left as stock)\n");
-	m_anl_have_prev = false;
-	for (int s = 0; s < 4; s++)
-	{
-		m_anl_prev_ringid[s] = 0;
-		m_anl_prev_ringh[s] = -1;
-	}
-	for (int i = 0; i < 2; i++)
-	{
-		m_anl_prev_anchor[i] = 0xffffffff;
-		m_anl_prev_desc[i] = 0;
-		m_ash_live_handle[i] = -1;
-		m_ash_live_id[i] = 0xffffffff;
-		m_ash_repairs_cycle[i] = 0;
-		m_ash_yielded[i] = false;
-		m_ash_missed_logged[i] = false;
-	}
-	m_o20_kills = 0;
-	m_o20_regs = 0;
-	m_o20_revives = 0;
-	m_o20_rewrites = 0;
-	m_o20_borndead = 0;
-	m_o20_unreg = 0;
-	m_o20_healthy = 0;
-	m_ash_repairs = 0;
-	m_ash_yields = 0;
-	m_ash_missed = 0;
 	m_ars_scrubs = 0;
-	// SAFETY INTERLOCK: the retired WAVEINIT_HOLD clamp poke rewrites the ring
-	// lookup's not-found verdict -2 -> 0 ("alive") - under it a scrubbed slot
-	// (id blanked -> lookup not-found) would read ALIVE forever and areas could
-	// never complete by anchor death.  The scrub is only sign-neutral against
-	// the STOCK lookup, so refuse to arm RESURRECT alongside WAVEINIT_HOLD.
-	if (m_patch_anchor_resurrect && m_patch_waveinit_hold)
-	{
-		m_patch_anchor_resurrect = false;
-		logerror("ANCHOR_RESURRECT: REFUSED (NAMCOS23_PATCH_WAVEINIT_HOLD is armed - its retired not-found clamp poke would make scrubbed slots read ALIVE forever; unarm WAVEINIT_HOLD to use the scrub - it is retired from the recipe anyway)\n");
-	}
-	if (m_trace_op20)
-		logerror("OP20: driver armed (NAMCOS23_TRACE_OP20=%s) - READ-ONLY wave-anchor RING-TRANSACTION trace, per-event + 1/s status: per-vblank diff of the 4-slot ring @0x802D2030 -> 'OP20: ring-kill' (handle live->dead; matchrec0/1 = which record's rec+0x364 the id equals, walk0/1 = that record's f5c bit0 clear, endcur inline - join the device 'OP20: rx-release' lines by t= to name INGESTED kills vs local releases) / 'ring-reg' (fresh registration) / 'ring-revive' (FALSIFIER - no stock path, expect 0) / 'ring-rewrite'; plus the commit-edge classifier on any rec+0x35C/+0x364 change: 'born-dead-commit' (find hit a stale DEAD slot - the 0x800B5710 no-resurrect edge, P043b class i, the cascade), 'commit-unregistered' (absent from all slots - beta fuel), healthy commits counted silently. Purpose: NAME the class-(ii) walk-phase killer (predicted: op-0x20 ingest echo of the round-start cull/avatar burst) and measure sub-class shares for the shield/resurrect arms. Vblank granularity: same-frame kill+re-register collapses to one edge\n",
-				op20_trace_env);
-	if (m_patch_anchor_shield)
-		logerror("ANCHOR_SHIELD: armed (NAMCOS23_PATCH_ANCHOR_SHIELD=%s) - walk-phase wave-anchor death repair (P043b class ii - room-1: anchor dead within 1.33 s of seed on BOTH cabs): own records only (p370 bit30 clear), anchor != -1, f5c bit0 CLEAR (wave not yet active = no legitimate kill can target it); captures the anchor's LIVE ring handle each vblank and, if the slot goes dead mid-walk (ingested op-0x20 echo / local cull), RESTORES the captured handle into slot+4 (halfword lane; only into a slot still carrying OUR id) so the completion check's window-open lookup sees a live anchor and the empty completion never latches; the entity's release mark is NOT undone and NO re-kill is applied at activation (re-applying = the imm=2 outcome P043b proved worthless). P025 log-and-yield: max 8 repairs per walk cycle then 'ANCHOR_SHIELD: yield'. Born-dead slots (never live this walk) are logged 'missed' and left to ANCHOR_RESURRECT. Lines: repair/yield/missed/cycle-end + 1/s status. Writes DATA only (ring halfword; never code - no DRC concern). Expect: repairs on race-window kills, cycle-end bit16=0 (walk survived), room-1 PLAYS\n",
-				anchor_shield_env);
 	if (m_patch_anchor_resurrect)
-		logerror("ANCHOR_RESURRECT: armed (NAMCOS23_PATCH_ANCHOR_RESURRECT=%s %s) - the born-dead fix (P043b class i, the 80264ef8 cascade: ONE dead ring slot re-latched across 4 successive commits): per vblank, any ring slot with handle<0 (GUARD: live handles NEVER touched) and a real id (not 0 init / not ffffffff already-scrubbed) gets its ID word blanked to ffffffff = 'OP20: born-dead made impossible' - the next find-or-create of that anchor id MISSES (both ROM find loops fast-path id==-1 and so can never match ffffffff - VERIFIED @0x800B5690/0x800B56EC-5748) and CREATES+REGISTERS a fresh entity into the still-free slot (registration @0x800B5808-38 scans handle<0 only, id irrelevant - VERIFIED); verdict-neutral for the completion check (found-dead -1 and not-found -2 are both negative; the check is sign-only @0x80014194-98) so the designed last-kill->complete mechanism is untouched; the current already-doomed cycle still completes empty - the scrub fixes the NEXT commit (exactly the cascade class). Lines: 'ANCHOR_RESURRECT: scrub' per blanked slot + 1/s status; falsifier = 'OP20: born-dead-commit' MUST collapse toward 0. Writes DATA only. INCOMPATIBLE with the retired WAVEINIT_HOLD clamp (refused above if both set)\n",
+		logerror("ANCHOR_RESURRECT: armed (NAMCOS23_PATCH_ANCHOR_RESURRECT=%s %s) - the born-dead fix (P043b class i, the 80264ef8 cascade: ONE dead ring slot re-latched across 4 successive commits): per vblank, any ring slot with handle<0 (GUARD: live handles NEVER touched) and a real id (not 0 init / not ffffffff already-scrubbed) gets its ID word blanked to ffffffff = born-dead made impossible - the next find-or-create of that anchor id MISSES (both ROM find loops fast-path id==-1 and so can never match ffffffff - VERIFIED @0x800B5690/0x800B56EC-5748) and CREATES+REGISTERS a fresh entity into the still-free slot (registration @0x800B5808-38 scans handle<0 only, id irrelevant - VERIFIED); verdict-neutral for the completion check (found-dead -1 and not-found -2 are both negative; the check is sign-only @0x80014194-98) so the designed last-kill->complete mechanism is untouched; the current already-doomed cycle still completes empty - the scrub fixes the NEXT commit (exactly the cascade class). Lines: 'ANCHOR_RESURRECT: scrub' per blanked slot. Writes DATA only\n",
 				anchor_resurrect_val, patch_env_src(anchor_resurrect_from_env, anchor_resurrect_val).c_str());
 
-	// P055 EXPERIMENT (branch patch/boat-jitter-trace): arm the READ-ONLY per-vblank
-	// BLUE entity-ingest trace from the environment - same "non-empty and not
-	// literal 0" idiom.  The device (namco_c139) reads the SAME env var in its
-	// device_start for the FRESH/REPLAY classifier + rx-apply generation this trace
-	// consumes.  Full design + the Phase-1 RE finding live in the member-block
-	// comment.  MODEL PROVENANCE: Opus 4.8.
-	char const *const bj_trace_env = std::getenv("NAMCOS23_TRACE_BOATJITTER");
-	m_bj_trace = bj_trace_env && bj_trace_env[0] != '\0'
-			&& !(bj_trace_env[0] == '0' && bj_trace_env[1] == '\0');
-	m_bj_have_prev = false;
-	m_bj_prev_rxgen = 0;
-	m_bj_reversals = 0;
-	m_bj_rx_moves = 0;
-	m_bj_local_moves = 0;
-	for (int s = 0; s < BJ_SLOTS; s++)
-	{
-		for (int c = 0; c < 6; c++)
-		{
-			m_bj_prev[s].v[c] = 0;
-			m_bj_prev[s].d[c] = 0;
-		}
-		m_bj_prev[s].live = false;
-	}
-	if (m_bj_trace)
-	{
-		bool const is_conn = m_c139 && m_c139->comm_is_connector();
-		logerror("BOATJITTER: driver armed (NAMCOS23_TRACE_BOATJITTER=%s) - READ-ONLY per-vblank BLUE entity-ingest source/freshness/reversal trace. Emits ONLY on the CONNECTOR/blue (this cab is %s) while staging mode 0x802F3FD0==2. Scans the actor array 0x802F4DB0+slot*0x2B8 (live = status word +0x18 < 0), diffs two ingested position triples A=+0x1F4/+0x1F8/+0x1FC (op0x21-0x33 coords) and B=+0xA8/+0xAC/+0xB0 (op0x17-0x19 transform) vs last vblank, and logs 'BOATJITTER: reversal' when a component's delta flips sign (|deltas|>=%d) - the shake signal. src=RX (device rx-apply gen advanced this vblank; fresh=/replay= from the FRESH/REPLAY bridge) vs src=LOCAL (no ingest this window). Read: reversals riding replay= => hyp A (stale-replay); reversals split LOCAL-forward / RX fresh= backward => hyp B (dual-writer). Per-vblank line cap %d + 1/s status. Expect only a few to a few tens of reversal lines/sec in the boat area (low-MB capture)\n",
-				bj_trace_env, is_conn ? "the CONNECTOR/blue - trace LIVE" : "NOT the connector - trace stands down (arm on blue)",
-				int(BJ_MIN_MOVE), int(BJ_MAX_LINES_FRAME));
-	}
-
-	// P056 EXPERIMENT (branch patch/boat-render-trace): arm the READ-ONLY per-vblank
-	// BLUE rendered-position + liveness trace from the environment (same "non-empty
-	// and not literal 0" gate).  The device (namco_c139) arms its FRESH/REPLAY +
-	// rx-apply bridge on EITHER NAMCOS23_TRACE_BOATJITTER or NAMCOS23_TRACE_BOATRENDER,
-	// so this trace reuses that bridge with no extra device wiring.  Full design +
-	// the residual uncertainty live in the member-block comment.  MODEL PROVENANCE:
-	// Opus 4.8.
-	char const *const br_trace_env = std::getenv("NAMCOS23_TRACE_BOATRENDER");
-	m_br_trace = br_trace_env && br_trace_env[0] != '\0'
-			&& !(br_trace_env[0] == '0' && br_trace_env[1] == '\0');
-	m_br_have_prev = false;
-	m_br_prev_rxgen = 0;
-	m_br_reversals = 0;
-	m_br_rx_moves = 0;
-	m_br_local_moves = 0;
-	m_br_live_transitions = 0;
-	for (int s = 0; s < BR_SLOTS; s++)
-	{
-		for (int c = 0; c < 3; c++)
-		{
-			m_br_prev[s].v[c] = 0;
-			m_br_prev[s].d[c] = 0;
-		}
-		m_br_prev[s].id = 0;
-		m_br_prev[s].live = false;
-		m_br_prev[s].sampled = false;
-	}
-	if (m_br_trace)
-	{
-		bool const is_conn = m_c139 && m_c139->comm_is_connector();
-		logerror("BOATRENDER: driver armed (NAMCOS23_TRACE_BOATRENDER=%s) - READ-ONLY per-vblank BLUE rendered-position + liveness trace. Emits ONLY on the CONNECTOR/blue (this cab is %s) while staging mode 0x802F3FD0==2. Scans actor array 0x802F4DB0+slot*0x2B8, gates to ACTIVE actors (live +0x18<0 AND real id, skipping id=0000/ffff empty/placeholder slots), and diffs the RENDERED world pos +0x30/+0x34/+0x38 (renderer 0x80089C78) vs last vblank. 'BOATRENDER: reversal' = a component's delta flips sign (|deltas|>=%d) = the visible shake; 'BOATRENDER: live' = a real actor's +0x18 live flag transitions (the disappearing red player). Each line tagged src=RX (device rx-apply gen advanced this vblank; fresh=/replay= from the P055 FRESH/REPLAY bridge) vs src=LOCAL. Read: dual-writer (hyp B) = reversals split LOCAL-forward / RX fresh= backward; stale-replay (hyp A) = reversals ride replay=. Per-vblank line cap %d + 1/s status rail (active/live/reversals/live_trans/fresh/replay/cabid). REFINES P055 (which watched ingest coords on mostly-empty slots and caught only 17 reversals)\n",
-				br_trace_env, is_conn ? "the CONNECTOR/blue - trace LIVE" : "NOT the connector - trace stands down (arm on blue)",
-				int(BR_MIN_MOVE), int(BR_MAX_LINES_FRAME));
-	}
-
-	// P059 EXPERIMENT (branch patch/poscorr-trace): arm the READ-ONLY per-vblank
-	// BLUE correction-cadence + local-drift trace from the environment (same
-	// "non-empty and not literal 0" gate).  The device (namco_c139) arms its
-	// FRESH/REPLAY + rx-apply bridge on NAMCOS23_TRACE_POSCORR too, so this trace
-	// reuses that bridge with no extra device wiring.  Full design + the write-tap-
-	// vs-sampling decision live in the member-block comment.  MODEL PROVENANCE:
-	// Opus 4.8.
-	char const *const pc_trace_env = std::getenv("NAMCOS23_TRACE_POSCORR");
-	m_pc_trace = pc_trace_env && pc_trace_env[0] != '\0'
-			&& !(pc_trace_env[0] == '0' && pc_trace_env[1] == '\0');
-	m_pc_pos_have_prev = false;
-	m_pc_prev_rxgen = 0;
-	m_pc_corr_win = 0;
-	m_pc_corr_fresh_win = 0;
-	m_pc_corr_replay_win = 0;
-	m_pc_local_events_win = 0;
-	m_pc_local_sum_win = 0.f;
-	m_pc_drift_max_seen = 0.f;
-	m_pc_corr_tot = 0;
-	m_pc_snap_sum = 0.f;
-	m_pc_remote_live_last = 0;
-	// P061 RIDER: anim-layer discriminator window state.
-	m_pc_anim_chg_win = 0;
-	m_pc_kf_chg_win = 0;
-	m_pc_anim_ccstatic_win = 0;
-	m_pc_anim_lines_win = 0;
-	for (int i = 0; i < 6; i++)
-		m_pc_gap_hist[i] = 0;
-	for (int s = 0; s < PC_SLOTS; s++)
-	{
-		for (int c = 0; c < 3; c++)
-		{
-			m_pc_prev[s].cc[c] = 0.f;
-			m_pc_prev[s].w80[c] = 0.f;
-		}
-		m_pc_prev[s].sampled = false;
-		m_pc_prev[s].corr_seen = false;
-		m_pc_prev[s].last_corr_frame = 0;
-		m_pc_prev[s].drift_accum = 0.f;
-		m_pc_prev[s].drift_max = 0.f;
-		m_pc_prev[s].anim = 0;            // P061 RIDER
-		m_pc_prev[s].kf = 0;              // P061 RIDER
-		m_pc_prev[s].anim_sampled = false; // P061 RIDER
-	}
-	if (m_pc_trace)
-	{
-		bool const is_conn = m_c139 && m_c139->comm_is_connector();
-		logerror("POSCORR: driver armed (NAMCOS23_TRACE_POSCORR=%s) - READ-ONLY per-vblank BLUE correction-cadence + local-drift trace for FIX FAMILY B. Emits ONLY on the CONNECTOR/blue (this cab is %s) while staging mode 0x802F3FD0==2. Scans actor array 0x802F4DB0+slot*0x2B8, gates to REMOTE actors (+0x18<0 = bit31 set), and diffs the world-pos BASE +0xCC (type-1) and +0x80 (type-2) - read as IEEE floats - vs last vblank. A base move in a vblank the device rx-apply gen advanced (an op4B/4C snapshot delivered) = 'POSCORR: corr' (INGEST correction: logs slot, snap, gap-since-last-corr, drift_pre, fresh/replay); a base move with no ingest this window = LOCAL drift (accumulated, no per-event line). 1/s 'POSCORR: rom-status' rail = remote_live, corr_win, corr_fresh/replay, mean_snap, local_events/sum, drift_max, inter-correction gap histogram, dev fresh/replay. SAMPLING (not a write-tap): main RAM is add_fastram so under the DRC stores bypass any tap AND mips3 PC is block-stale - the only sound tap forces the interpreter (~1.56x, perturbs the measured cadence), so we key INGEST/LOCAL on the rx-apply bridge instead (see member comment). Per-vblank corr-line cap %d, min move %.3f. Pair by t= with the device 'POSCORR: dev' arrival/delivery/drop rail\n",
-				pc_trace_env, is_conn ? "the CONNECTOR/blue - trace LIVE" : "NOT the connector - trace stands down (arm on blue)",
-				int(PC_MAX_LINES_FRAME), double(PC_MIN_MOVE));
-	}
-
-	// P060 EXPERIMENT (branch patch/hb-phase-aware, off patch/poscorr-trace):
-	// arm the driver-side mode-signal push for the phase-aware heartbeat token
-	// cadence.  Simple non-empty/non-"0" idiom HERE (arm bit only, gating the
-	// per-vblank push in vblank()); the DEVICE reads the same env in its
-	// device_start(), value-checks the fast_ms and refuses out-of-range values
-	// there - a refused value leaves the device inert, so a stray driver push
-	// is harmless (set_ingame early-returns unarmed).  Full rationale +
-	// debounce in the member-block comment.  MODEL PROVENANCE: Fable 5.
-	char const *const hb_phase_aware_env = std::getenv("NAMCOS23_PATCH_HB_PHASE_AWARE");
-	m_patch_hb_phase_aware = hb_phase_aware_env && hb_phase_aware_env[0] != '\0'
-			&& !(hb_phase_aware_env[0] == '0' && hb_phase_aware_env[1] == '\0');
-	if (m_patch_hb_phase_aware)
-		logerror("HB_PHASE_AWARE: driver push armed (NAMCOS23_PATCH_HB_PHASE_AWARE=%s) - staging mode word 0x802F3FD0 sampled READ-ONLY each vblank and pushed to the C139 (set_ingame); the device debounces (60 consecutive mode-2 vblanks -> FAST, SAFE immediately on loss) and picks the heartbeat cadence; see the device HB_PHASE_AWARE armed/REFUSED banner for the validated fast_ms\n",
-				hb_phase_aware_env);
-
-	// P061 EXPERIMENT (branch patch/tx-complete-irq, off patch/hb-phase-aware):
-	// arm the driver-side mode-signal push for the C422 TX-COMPLETE dispatch
-	// model.  Same non-empty/non-"0" idiom; the DEVICE reads the same env in
-	// device_start and owns the mechanism + the mode-2 gate (the shared P060
-	// set_ingame debounce) - the driver only guarantees the per-vblank mode
-	// push happens when this env is armed even with HB_PHASE_AWARE unset.
-	// Full rationale in the member-block comment.  MODEL PROVENANCE: Fable 5.
-	char const *const tx_complete_irq_env = std::getenv("NAMCOS23_PATCH_TX_COMPLETE_IRQ");
-	m_patch_tx_complete_irq = tx_complete_irq_env && tx_complete_irq_env[0] != '\0'
-			&& !(tx_complete_irq_env[0] == '0' && tx_complete_irq_env[1] == '\0');
-	if (m_patch_tx_complete_irq)
-		logerror("TX_COMPLETE_IRQ: driver push armed (NAMCOS23_PATCH_TX_COMPLETE_IRQ=%s) - staging mode word 0x802F3FD0 sampled READ-ONLY each vblank and pushed to the C139 (set_ingame, shared P060 debounce); the device dispatches staged standalone TXs at their stage instant only in stable mode-2; see the device TX_COMPLETE_IRQ armed banner + 1/s status rail\n",
-				tx_complete_irq_env);
-
-	// P063 EXPERIMENT (branch patch/tx-complete-v2, off patch/txstage-trace):
+	// P063 (branch patch/tx-complete-v2, off patch/txstage-trace):
 	// arm the driver-side mode-signal push for the P062-measured TX-complete
 	// release v2.  Same non-empty/non-"0" idiom; the DEVICE reads the same env
-	// in device_start and owns the whole mechanism (it also refuses to arm if
-	// the dead P061 env is set - a refused device leaves this push harmless,
-	// set_ingame early-returns unarmed).  Full rationale in the member-block
-	// comment.  MODEL PROVENANCE: Fable 5.
+	// in device_start and owns the whole mechanism.  Full rationale in the
+	// member-block comment.  MODEL PROVENANCE: Fable 5.
 	// P067 (patch/defaults-on): ADOPTED - the driver push is armed by DEFAULT;
 	// NAMCOS23_PATCH_TX_COMPLETE_V2=0 is the kill switch (fully inert, the
 	// pre-P067 unset path).  The DEVICE resolves the same var (default-on
-	// there too) - keep the two agreeing; a device REFUSE (dead P061 env also
-	// set) leaves this push harmless, set_ingame early-returns unarmed.
+	// there too) - keep the two agreeing.
 	bool tx_complete_v2_from_env = false;
 	char const *const tx_complete_v2_val = patch_env_or_default("NAMCOS23_PATCH_TX_COMPLETE_V2", "1", tx_complete_v2_from_env);
 	m_patch_tx_complete_v2 = tx_complete_v2_val != nullptr;
 	if (m_patch_tx_complete_v2)
-		logerror("TX_COMPLETE_V2: driver push armed (NAMCOS23_PATCH_TX_COMPLETE_V2=%s %s) - staging mode word 0x802F3FD0 sampled READ-ONLY each vblank and pushed to the C139 (set_ingame, shared P060 debounce); the device dispatches fresh-content staged TXs at their stage instant (prev-hash gate), models a TX-busy interval on the busy-poll, and ages out stale heartbeat replays - only in stable mode-2; see the device TX_COMPLETE_V2 armed banner + 1/s status rail\n",
+		logerror("TX_COMPLETE_V2: driver push armed (NAMCOS23_PATCH_TX_COMPLETE_V2=%s %s) - staging mode word 0x802F3FD0 sampled READ-ONLY each vblank and pushed to the C139 (set_ingame, shared P060 debounce); the device dispatches fresh-content staged TXs at their stage instant (prev-hash gate), models a TX-busy interval on the busy-poll, and ages out stale heartbeat replays - only in stable mode-2; see the device TX_COMPLETE_V2 armed banner\n",
 				tx_complete_v2_val, patch_env_src(tx_complete_v2_from_env, tx_complete_v2_val).c_str());
 	else
 		logerror("TX_COMPLETE_V2: driver push DISABLED (NAMCOS23_PATCH_TX_COMPLETE_V2=0 kill switch - adopted default overridden; stock reg5 stop-and-wait release)\n");
 
-	// P065 EXPERIMENT (branch patch/corr-smooth, off patch/tx-complete-v2):
-	// arm the VIEWER-SIDE INGEST-CORRECTION BLENDING from the environment.
-	// Boolean gate = the usual non-empty/non-"0" idiom; the three tuning
-	// knobs are VALUE-CHECKED (out-of-range values are refused LOUDLY and the
-	// default stands - a typo can never arm an absurd blend).  The device
-	// (namco_c139) arms its rx-apply-generation bridge on the SAME env so
-	// rx_apply_gen() ticks even with the POSCORR/BOATRENDER traces unset.
-	// Armed on BOTH cabs (every cab is the remote-viewer of the peer's
-	// entities).  Full design + phase-1 s32 format verification in the
-	// member-block comment.  MODEL PROVENANCE: Fable 5.
-	char const *const cs_env = std::getenv("NAMCOS23_PATCH_CORR_SMOOTH");
-	m_cs_on = cs_env && cs_env[0] != '\0' && !(cs_env[0] == '0' && cs_env[1] == '\0');
-	m_cs_frames = 8;                // ~133 ms at 60 fps
-	m_cs_maxd = 0x01000000;         // teleport threshold, raw s32 world units (live bases observed ~0x2BAxxxxx..0x30Bxxxxx, so 0x01000000 ~ a large playfield fraction; generous by design - only cross-scene teleports should exceed it)
-	m_cs_mind = 1;                  // detection epsilon: any word change (raise if 60fps local-writer motion ever reads as blend-induced lag)
-	char const *const cs_frames_env = std::getenv("NAMCOS23_PATCH_CORR_SMOOTH_FRAMES");
-	if (cs_frames_env && cs_frames_env[0] != '\0')
-	{
-		long const v = std::strtol(cs_frames_env, nullptr, 0);
-		if (v >= 3 && v <= 15)
-			m_cs_frames = u8(v);
-		else
-			logerror("CORR_SMOOTH: REFUSED _FRAMES=%s (sane 3..15) - keeping default %u\n", cs_frames_env, unsigned(m_cs_frames));
-	}
-	char const *const cs_maxd_env = std::getenv("NAMCOS23_PATCH_CORR_SMOOTH_MAXD");
-	if (cs_maxd_env && cs_maxd_env[0] != '\0')
-	{
-		long long const v = std::strtoll(cs_maxd_env, nullptr, 0);
-		if (v >= 1 && v <= (long long)CS_SANE_ABS)
-			m_cs_maxd = s32(v);
-		else
-			logerror("CORR_SMOOTH: REFUSED _MAXD=%s (sane 1..0x%x) - keeping default 0x%x\n", cs_maxd_env, CS_SANE_ABS, m_cs_maxd);
-	}
-	char const *const cs_mind_env = std::getenv("NAMCOS23_PATCH_CORR_SMOOTH_MIND");
-	if (cs_mind_env && cs_mind_env[0] != '\0')
-	{
-		long long const v = std::strtoll(cs_mind_env, nullptr, 0);
-		if (v >= 1 && v <= (long long)m_cs_maxd)
-			m_cs_mind = s32(v);
-		else
-			logerror("CORR_SMOOTH: REFUSED _MIND=%s (sane 1..maxd=0x%x) - keeping default %d\n", cs_mind_env, m_cs_maxd, m_cs_mind);
-	}
-	m_cs_have_prev = false;
-	m_cs_prev_rxgen = 0;
-	m_cs_mode2_prev = false;
-	m_cs_blends_win = 0;
-	m_cs_steps_win = 0;
-	m_cs_snapthru_win = 0;
-	m_cs_fmtrej_win = 0;
-	m_cs_blends_tot = 0;
-	m_cs_snapthru_tot = 0;
-	m_cs_fmtrej_tot = 0;
-	for (int s = 0; s < CS_SLOTS; s++)
-	{
-		m_cs_slot[s].active = false;
-		m_cs_slot[s].type = 0;
-		m_cs_slot[s].id = 0;
-		m_cs_slot[s].frames_left = 0;
-		for (int c = 0; c < 3; c++)
-		{
-			m_cs_slot[s].seen[c] = 0;
-			m_cs_slot[s].rem[c] = 0;
-		}
-	}
-	if (m_cs_on)
-		logerror("CORR_SMOOTH: armed (NAMCOS23_PATCH_CORR_SMOOTH=%s) - VIEWER-SIDE correction blending for remote entities, BOTH cabs, driver-side, per-vblank while staging mode 0x802F3FD0==2. Walks actor array 0x802F4DB0+slot*0x2B8 (%d slots), gates to REMOTE (+0x18 bit31) + valid (+0x08 hw bit15 clear) + type 1/2 (+0x0A hw), and blends INGEST corrections on the world-pos base +0xCC/+0xD0/+0xD4 (type-1) / +0x80/+0x84/+0x88 (type-2) - VERIFIED s32 INTEGER triples (renderer 0x80089DF8 lwc1+cvt.s.w; writers 0x8010C5B0/0x80100014 trunc.w.s+swc1; 0x800FEB10 raw lw/subu) - NOT IEEE floats (the P059 garbage-magnitude caveat). A correction (rx-apply gen advanced + base moved >= mind=%d) of max-component delta D is released over N=%u vblanks (~%u ms): base written back to (new-D)+D/N immediately, +~D/N per vblank after (integer-exact; retargets from current on a newer correction). SNAP-THROUGH (instant, stock): |D| > maxd=0x%x (teleports/respawns/scene changes), slot id/type change (reuse), remote/valid loss, mode-2 loss, |word| > 0x%x format rail (pass through unsmoothed, counted format_rejects). Local prediction is KEPT: steps are relative to the freshly-read word, never forced back. Position words ONLY; <=3 word-writes/slot/vblank. 1/s 'CORR_SMOOTH: status' rail = blends/steps/snap_throughs/format_rejects + active_blends. Expect on the P064 boat repro: blue's boat snaps soften (blends track corrections, snap_throughs only at scene changes); boats still drift BETWEEN corrections (~0.17 corr/s each - blending covers the snap, not the starvation)\n",
-				cs_env, int(CS_SLOTS), m_cs_mind, unsigned(m_cs_frames),
-				unsigned(u32(m_cs_frames) * 1000 / 60), m_cs_maxd, CS_SANE_ABS);
-
-	// P048 EXPERIMENT (branch patch/reaper-patience, off patch/anchor-lifecycle):
+	// P048 (branch patch/reaper-patience, off patch/anchor-lifecycle):
 	// arm the bit31 snapshot-timeout REAPER patience widening from the
 	// environment.  VALUE-CHECKED gate, stricter than the boolean idiom: only
 	// "1" (imm 0x11 -> 0x1F, patience 17 -> 31 ticks) and "2" (imm 0x11 ->
@@ -12099,12 +8052,11 @@ void namcos23_state::machine_start()
 	else
 		logerror("REAPER_PATIENCE: DISABLED (NAMCOS23_PATCH_REAPER_PATIENCE=0 kill switch - adopted default 1 overridden; stock 17-tick reaper, no poke)\n");
 	if (m_patch_reaper_patience != 0)
-		logerror("REAPER_PATIENCE: armed (NAMCOS23_PATCH_REAPER_PATIENCE=%d %s) - verify-before-poke RAM-code word patch of the ROM's bit31 snapshot-timeout REAPER threshold (P047: gate @0x800B7184-71A4, release @0x800B71CC - kills any word0-bit31 remote-placeholder entity unserved for (count&0x1F) >= 0x11 = ~17 frames; the +0xF2 budget is refreshed ONLY by partner state ingest @0x800ABE9C-0x800AC818; at the round-start HB-floor regime a serve takes 2-3 hops = 0.30-0.45 s > the 0.28 s budget, so slave-side bit31 anchors (8025c0c8 +16 f class) and REMOTE op-0x2E sub-wave children (room-1: the emptied family lets the anchor's designed op-0x76 -> script-END completion fire pre-engage at +36/+51 f) evaporate exactly in the skip regime). Each vblank until terminal, read u32 @0x800B71A0 (program-space 0x000b71a0; the word reads 0 until the boot loader copies the program); on 0x2C420011 (sltiu $v0,$v0,0x11 - VERIFIED in full.txt) poke the SAME word with ONLY the immediate field changed: mode 1 -> 0x2C42001F (31 ticks ~0.52 s > the 3-hop worst case), mode 2 -> 0x2C420020 (unreachable by the &0x1F count = reaper OFF; the 40 s watchdog +0x3A2 + partner op-0x20/despawn echoes remain the orphan cleanup); on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). SAFETY IS STRUCTURAL: only bit31 placeholders are touched, and designed walk/staging completions require a script to have RUN, which bit31 forbids (bit31 -> placeholder tick 0x800B6A50; the program never executes) - the P043/P044 stall class is unreachable. DRC: P040b ordering (the reap tail first runs at attract gameplay, long after the early-boot poke; residual re-copy windows fail to STOCK patience only), 1/s word re-check/re-poke guard + status rail. Both cabs, same env. Expect: poked banner x1 early boot; status wordb71a0=%s thereafter; the OP20 reg-to-kill +[15,18] f ring-kill class collapses to 0; room-1 and c0c8-class fight areas PLAY\n",
+		logerror("REAPER_PATIENCE: armed (NAMCOS23_PATCH_REAPER_PATIENCE=%d %s) - verify-before-poke RAM-code word patch of the ROM's bit31 snapshot-timeout REAPER threshold (P047: gate @0x800B7184-71A4, release @0x800B71CC - kills any word0-bit31 remote-placeholder entity unserved for (count&0x1F) >= 0x11 = ~17 frames; the +0xF2 budget is refreshed ONLY by partner state ingest @0x800ABE9C-0x800AC818; at the round-start HB-floor regime a serve takes 2-3 hops = 0.30-0.45 s > the 0.28 s budget, so slave-side bit31 anchors (8025c0c8 +16 f class) and REMOTE op-0x2E sub-wave children (room-1: the emptied family lets the anchor's designed op-0x76 -> script-END completion fire pre-engage at +36/+51 f) evaporate exactly in the skip regime). Each vblank until terminal, read u32 @0x800B71A0 (program-space 0x000b71a0; the word reads 0 until the boot loader copies the program); on 0x2C420011 (sltiu $v0,$v0,0x11 - VERIFIED in full.txt) poke the SAME word with ONLY the immediate field changed: mode 1 -> 0x2C42001F (31 ticks ~0.52 s > the 3-hop worst case), mode 2 -> 0x2C420020 (unreachable by the &0x1F count = reaper OFF; the 40 s watchdog +0x3A2 + partner op-0x20/despawn echoes remain the orphan cleanup); on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). SAFETY IS STRUCTURAL: only bit31 placeholders are touched, and designed walk/staging completions require a script to have RUN, which bit31 forbids (bit31 -> placeholder tick 0x800B6A50; the program never executes) - the P043/P044 stall class is unreachable. DRC: P040b ordering (the reap tail first runs at attract gameplay, long after the early-boot poke; residual re-copy windows fail to STOCK patience only), 1/s word re-check/re-poke guard. Both cabs, same env. Expect: poked banner x1 early boot; room-1 and c0c8-class fight areas PLAY\n",
 				m_patch_reaper_patience,
-				patch_env_src(reaper_patience_from_env, reaper_patience_val).c_str(),
-				(m_patch_reaper_patience == 2) ? "2C420020" : "2C42001F");
+				patch_env_src(reaper_patience_from_env, reaper_patience_val).c_str());
 
-	// P050 EXPERIMENT (branch patch/single-burst-pump): arm the SINGLE-BURST
+	// P050 (branch patch/single-burst-pump): arm the SINGLE-BURST
 	// PUMP poke from the environment - same "non-empty and not literal 0" gate
 	// idiom; the poke itself is DEFERRED to vblank (at machine_start the boot
 	// loader has not yet copied the program into RAM, so the word reads 0).  The
@@ -12125,10 +8077,10 @@ void namcos23_state::machine_start()
 	if (!m_patch_burst_quantum)
 		logerror("BURST_QUANTUM: DISABLED (NAMCOS23_PATCH_BURST_QUANTUM=0 kill switch - adopted default overridden; stock 0xFF-hw pump quantum, no poke)\n");
 	if (m_patch_burst_quantum)
-		logerror("BURST_QUANTUM: armed (NAMCOS23_PATCH_BURST_QUANTUM=%s %s) - verify-before-poke RAM-code word patch of the ROM TX pump burst quantum (P049 F1: the fight-era 19/s->5.5-11/s collapse is the stop-and-wait wire x a payload chopped into <=0xFF-hw bursts; the 255-hw ceiling is the pump's own quantum @0x8000BC78, NOT the chip limit - the RX drain validator @0x8000BF90 accepts <=0x400 hw and each C422 slot is 0x400 hw). Each vblank until terminal, read u32 @0x8000BC78 (program-space 0x0000bc78; the word reads 0 until the boot loader copies the program); on 0x28420100 (slti $v0,$v0,0x100 - VERIFIED in full.txt) poke the SAME word with ONLY the immediate changed to 0x28420401 (slti $v0,$v0,0x401): every VM frame <=0x400 hw emits as ONE burst (our frames <=0x394 hw), the 0xFF-hw continuation paths go dead; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). DRC: P040b/REAPER ordering (the pump's frame-start first runs at attract link-up, after the early-boot poke; residual re-copy windows fail to STOCK 0x100 quantum only), 1/s word re-check/re-poke guard + status rail. Both cabs, same env. Device companions (latch retire + heartbeat re-arm for >255-hw single bursts) arm on the same env in namco_c139 device_start. Expect: poked banner x1 early boot; status wordbc78=28420401 thereafter; device single_burst_tx climbs in fights + no 255-hw chunk trains; fight fps 5.5-11 -> 12-19/s\n",
+		logerror("BURST_QUANTUM: armed (NAMCOS23_PATCH_BURST_QUANTUM=%s %s) - verify-before-poke RAM-code word patch of the ROM TX pump burst quantum (P049 F1: the fight-era 19/s->5.5-11/s collapse is the stop-and-wait wire x a payload chopped into <=0xFF-hw bursts; the 255-hw ceiling is the pump's own quantum @0x8000BC78, NOT the chip limit - the RX drain validator @0x8000BF90 accepts <=0x400 hw and each C422 slot is 0x400 hw). Each vblank until terminal, read u32 @0x8000BC78 (program-space 0x0000bc78; the word reads 0 until the boot loader copies the program); on 0x28420100 (slti $v0,$v0,0x100 - VERIFIED in full.txt) poke the SAME word with ONLY the immediate changed to 0x28420401 (slti $v0,$v0,0x401): every VM frame <=0x400 hw emits as ONE burst (our frames <=0x394 hw), the 0xFF-hw continuation paths go dead; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). DRC: P040b/REAPER ordering (the pump's frame-start first runs at attract link-up, after the early-boot poke; residual re-copy windows fail to STOCK 0x100 quantum only), 1/s word re-check/re-poke guard. Both cabs, same env. Device companions (latch retire + heartbeat re-arm for >255-hw single bursts) arm on the same env in namco_c139 device_start. Expect: poked banner x1 early boot; fight fps 5.5-11 -> 12-19/s\n",
 				burst_quantum_val, patch_env_src(burst_quantum_from_env, burst_quantum_val).c_str());
 
-	// P066 EXPERIMENT (branch patch/link-wait): arm the PARTNER-SEARCH
+	// P066 (branch patch/link-wait): arm the PARTNER-SEARCH
 	// countdown seed widen from the environment.  VALUE-CHECKED:
 	// NAMCOS23_PATCH_LINK_WAIT=<seconds>, integer 30..300 only (30 = stock
 	// width, 300 = 5 min; converted to ROM units = seconds*10 per the observed
@@ -12156,12 +8108,26 @@ void namcos23_state::machine_start()
 					link_wait_env);
 	}
 	if (m_patch_link_wait_units != 0)
-		logerror("LINK_WAIT: armed (NAMCOS23_PATCH_LINK_WAIT=%s -> units=%d) - verify-before-poke RAM-code word patch of the boot PARTNER-SEARCH countdown seed (P066 static RE: state 0 @0x80009A90 - table 0x8022A170[gp+0x756C] via dispatcher 0x8000A370 - seeds gp+0x6F78 with li $v0,300 @0x80009AB8; the state-1 tick 0x80009AD8 counts it down on the NETWORK CHECK screen at the observed ~10 counts/s, and its expiry - the SAME timer, there is no separate solo-fallback timer - advances to the state-2 link-vs-solo flow @0x8000A4CC once the A440 gate gp+0x7790 is up). Each vblank until terminal, read u32 @0x80009AB8 (program-space 0x00009ab8; reads 0 until the boot loader copies the program); on 0x2402012C (VERIFIED in full.txt; gp+0x6F78 has no other writer and no other timer shares the word) poke the SAME word with ONLY the immediate changed to units = seconds*10; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). ESTABLISHMENT SAFETY: only the seed VALUE changes - tick/expiry logic, the A440 handshake and the op55 machinery are untouched. BOTH CABS MUST RUN THE SAME VALUE: a shorter-window cab exits partner search (state -> 2) earlier - a mismatch re-creates the early solo-fallback this patch removes. DRC: P040b/REAPER/BURST ordering class at its tightest margin (the seed first runs at the first state-0 dispatch, after the boot init chain; a residual re-copy window seeds STOCK 300 = fail-to-stock, the on-screen start value is the tell), 1/s word re-check/re-poke guard + status rail. Expect: poked banner x1 early boot; the on-screen countdown starts at %d instead of 300\n",
+		logerror("LINK_WAIT: armed (NAMCOS23_PATCH_LINK_WAIT=%s -> units=%d) - verify-before-poke RAM-code word patch of the boot PARTNER-SEARCH countdown seed (P066 static RE: state 0 @0x80009A90 - table 0x8022A170[gp+0x756C] via dispatcher 0x8000A370 - seeds gp+0x6F78 with li $v0,300 @0x80009AB8; the state-1 tick 0x80009AD8 counts it down on the NETWORK CHECK screen at the observed ~10 counts/s, and its expiry - the SAME timer, there is no separate solo-fallback timer - advances to the state-2 link-vs-solo flow @0x8000A4CC once the A440 gate gp+0x7790 is up). Each vblank until terminal, read u32 @0x80009AB8 (program-space 0x00009ab8; reads 0 until the boot loader copies the program); on 0x2402012C (VERIFIED in full.txt; gp+0x6F78 has no other writer and no other timer shares the word) poke the SAME word with ONLY the immediate changed to units = seconds*10; on any OTHER nonzero word REFUSE one-shot (ROM-revision guard). ESTABLISHMENT SAFETY: only the seed VALUE changes - tick/expiry logic, the A440 handshake and the op55 machinery are untouched. BOTH CABS MUST RUN THE SAME VALUE: a shorter-window cab exits partner search (state -> 2) earlier - a mismatch re-creates the early solo-fallback this patch removes. DRC: P040b/REAPER/BURST ordering class at its tightest margin (the seed first runs at the first state-0 dispatch, after the boot init chain; a residual re-copy window seeds STOCK 300 = fail-to-stock, the on-screen start value is the tell), 1/s word re-check/re-poke guard. Expect: poked banner x1 early boot; the on-screen countdown starts at %d instead of 300\n",
 				link_wait_env, m_patch_link_wait_units, m_patch_link_wait_units);
 
-	// TEMP DEBUG (phase 9d): install_write_tap on link-state vars + timeout
-	// counter is bypassed by add_fastram above. Polled per-frame in vblank()
-	// instead. REMOVE BEFORE COMMIT.
+	// Phase 9d note (permanent): install_write_tap on the link-state words is
+	// bypassed by add_fastram above - vblank() polls the counter word instead.
+	// P040 correction (verified against src/devices/cpu/mips/*, retained
+	// after the v1 filter's P072 removal): "add_fastram bypasses
+	// install_write_tap" holds for the base-class TLB mips3 cores, whose
+	// accessors translate to PHYSICAL and consult m_fastram first - but the
+	// R4650 used here OVERRIDES the interpreter accessors (mips3.cpp
+	// 1541-1711) and in kernel mode passes the raw virtual address straight
+	// to the program space (never touching fastram), and the r4650 DRC
+	// accessor's fastram compare runs on the raw kseg0 VIRTUAL address
+	// (0x802Fxxxx), which can never match the PHYSICAL range
+	// (0, mainram.bytes()-1) registered above - so on THIS driver a write
+	// tap fires under both cores.  Caveat for tap-based instruments: mips3
+	// exports no exact-instruction PC (GENPC == GENPCBASE == m_core->pc,
+	// block-stale under the DRC; interpreter reads store-PC+4), so any
+	// pc-keyed tap needs set_force_no_drc (P040 measured that at ~1.56x
+	// wall slowdown).
 }
 
 void gorgon_state::machine_start()
@@ -12460,25 +8426,6 @@ void namcos23_state::timecrs2(machine_config &config)
 {
 	s23(config);
 	m_jvs->set_default_option("namco_tssio");
-
-	// P040 EXPERIMENT (branch patch/op6f-394-clamp): when the op6F 394-adoption
-	// store filter is armed, force the main-CPU INTERPRETER.  The filter keys on
-	// the PC observed inside a write tap; under the DRC (the MAME default)
-	// m_core->pc is only synced at block exits/exceptions, so pc() reads a
-	// STALE value inside a mid-block store and the filter would silently fail
-	// open.  The interpreter steps m_core->pc every instruction (advancing it
-	// BEFORE the op body executes - at store time pc() reads store-PC+4, a
-	// deterministic offset the filter's range compare absorbs; see the member-
-	// block comment).  This MUST run at machine-config time: mips3 latches
-	// m_isdrc = allow_drc() in device_start(), before the driver's
-	// machine_start() (same driver-side switch as atvtrack/aristmk6/cougar).
-	// The env parse duplicates the machine_start idiom ("non-empty and not
-	// literal 0") because machine_start is too late.  Env unset -> stock DRC,
-	// bit-exact stock behavior.  Experiment branch only.
-	char const *const no394_cfg_env = std::getenv("NAMCOS23_PATCH_OP6F_NO394");
-	if (no394_cfg_env && no394_cfg_env[0] != '\0'
-			&& !(no394_cfg_env[0] == '0' && no394_cfg_env[1] == '\0'))
-		m_maincpu->set_force_no_drc(true);
 }
 
 void namcoss23_state::ss23(machine_config &config)

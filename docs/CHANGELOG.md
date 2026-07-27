@@ -6,6 +6,22 @@ language.
 This is a fan preservation project. It is not affiliated with or
 endorsed by Namco or Bandai Namco.
 
+## v0.4 — 2026-07-27 — Under-the-hood cleanup
+
+- **The link code went on a diet.** During development, the emulation
+  carried a large amount of scaffolding: instrumentation used to
+  reverse-engineer the link protocol, and abandoned experimental
+  approaches kept for reference. All of it has now been removed —
+  roughly 6,700 lines, close to a quarter of the link-play source —
+  in a carefully verified series of passes.
+- **Nothing about gameplay changes.** The shipped feature set and
+  behavior are identical; this was validated step by step with linked
+  play sessions after every stage. What you get is a leaner, clearer
+  codebase as the foundation for future work (and for anyone reading
+  the source).
+- The game build (`mametc2.exe`) is rebuilt for this release — the
+  first time since v0.1 — but plays identically to v0.1 through v0.3.
+
 ## v0.3 — 2026-07-20 — Per-cabinet display settings
 
 - **Display settings per cabinet.** New `V` option in the launcher menu:
