@@ -65,6 +65,10 @@ Everything is driven by ONE launcher script, `launch_tc2.ps1`. It configures the
 6. A connection over TCP port 9875 is established, then a countdown will begin. RED instance will start first, followed by BLUE.
 7. The NAMCO parental advisory splash screen will appear to hang while both cabinets synchronize their clocks; then the GASHIN logo should appear in sync, which indicates a healthy link. SOLO / LINK PLAY should appear available on the mode-select screen.
 
+### Linux (experimental):
+
+A Linux build is available as `TC2-LinkPlay-v0.4-linux-x64.tar.gz` on the [Releases](https://github.com/pocketjazzy/MAME-TC2-Public/releases) page. Extract it, place `timecrs2.zip` in `roms/`, and run `./launch_tc2.sh` — the script mirrors `launch_tc2.ps1` (same menu and setup). Two Linux notes: window position/size settings are Windows-only, and the RED→BLUE launch stagger should stay at the default 3 seconds — if the cabinets don't link on your machine, experiment with `./launch_tc2.sh --stagger X`.
+
 ---
 
 # Troubleshooting
