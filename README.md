@@ -138,4 +138,16 @@ Firewall exceptions or router port forwarding): those changes are made at
 your own discretion and risk, and you are solely responsible for the
 security of your own network.
 
+---
+
+## Webcam-based pedal alternative
+
+The arcade cabinet's duck-behind-cover foot pedal can be simulated with any
+generic USB webcam: **[Crouch-Detection](https://github.com/pocketjazzy/Crouch-Detection-Public)**
+is a free companion app that body-tracks you and holds the pedal key
+(Left Alt, TC2's default pedal binding) while you're standing — physically
+crouch and your character ducks behind cover, stand back up and you pop out
+to shoot. Per-player calibration takes about 13 seconds. Download and setup
+instructions are in that repo's README.
+
 
