@@ -483,7 +483,7 @@ private:
 
 					m_rx_payload.resize(size);
 					asio::async_read(m_socket, asio::buffer(m_rx_payload),
-							[this, size] (std::error_code const &err2, std::size_t /*bytes2*/)
+							[this] (std::error_code const &err2, std::size_t /*bytes2*/)
 							{
 								if (m_stopping.load(std::memory_order_acquire))
 									return;
